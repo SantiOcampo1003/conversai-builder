@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# n8n
+.n8n/
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+
