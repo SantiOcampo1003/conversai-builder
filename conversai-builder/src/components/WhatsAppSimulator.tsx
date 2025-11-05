@@ -37,6 +37,11 @@ export const WhatsAppSimulator = ({
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [userMessageCount, setUserMessageCount] = useState(0);
+  const [reachedLimit, setReachedLimit] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactData, setContactData] = useState({ name: "", email: "", phone: "" });
+  const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -56,7 +61,11 @@ export const WhatsAppSimulator = ({
   }, []);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || reachedLimit) return;
+
+    // Incrementar contador de mensajes del usuario
+    const newCount = userMessageCount + 1;
+    setUserMessageCount(newCount);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -69,6 +78,28 @@ export const WhatsAppSimulator = ({
     setMessages(prev => [...prev, userMessage]);
     setInputMessage("");
     setIsTyping(true);
+
+    // Si alcanzó el límite de 4 mensajes, mostrar CTA
+    if (newCount >= 4) {
+      setTimeout(() => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
+        ));
+
+        const ctaMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: "🎉 ¡Wow! Veo que te está gustando tu agente. \n\n✨ Esta es solo una demostración. \n\n¿Te gustaría tener este agente trabajando 24/7 en tu WhatsApp real?\n\n💬 Déjanos tus datos y te contactamos en menos de 10 minutos.",
+          sender: "agent",
+          timestamp: new Date(),
+          status: "read"
+        };
+        setMessages(prev => [...prev, ctaMessage]);
+        setIsTyping(false);
+        setReachedLimit(true);
+        setShowContactForm(true);
+      }, 1500);
+      return;
+    }
 
     // Simular cambio de estado del mensaje
     setTimeout(() => {
@@ -85,7 +116,7 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      const response = await fetch('https://salem-initial-integrated-printed.trycloudflare.com/webhook/chat-message', {
+      const response = await fetch('http://localhost:5678/webhook/chat-message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,6 +181,10 @@ export const WhatsAppSimulator = ({
         status: "read"
       }
     ]);
+    setUserMessageCount(0);
+    setReachedLimit(false);
+    setShowContactForm(false);
+    setContactData({ name: "", email: "", phone: "" });
     toast({
       title: "Conversación reiniciada",
       description: "Puedes empezar una nueva conversación",
@@ -166,6 +201,64 @@ export const WhatsAppSimulator = ({
       title: "Conversación copiada",
       description: "El texto ha sido copiado al portapapeles",
     });
+  };
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!contactData.name || !contactData.email || !contactData.phone) {
+      toast({
+        title: "Datos incompletos",
+        description: "Por favor completa todos los campos",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmittingContact(true);
+
+    try {
+      // Enviar datos de contacto al webhook
+      const response = await fetch('http://localhost:5678/webhook/contact-lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...contactData,
+          agentId,
+          source: 'chat-simulator',
+          timestamp: new Date().toISOString()
+        }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "¡Gracias!",
+          description: "Te contactaremos muy pronto 🚀",
+        });
+        setShowContactForm(false);
+        
+        // Mensaje de confirmación
+        const confirmMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          text: `¡Perfecto ${contactData.name}! 🎉\n\nYa tenemos tus datos. Te contactaremos a ${contactData.phone} o ${contactData.email} en los próximos minutos.\n\n¡Gracias por confiar en easy!`,
+          sender: "agent",
+          timestamp: new Date(),
+          status: "read"
+        };
+        setMessages(prev => [...prev, confirmMessage]);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un problema. Intenta de nuevo.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmittingContact(false);
+    }
   };
 
   const getStatusIcon = (status?: string) => {
@@ -285,6 +378,46 @@ export const WhatsAppSimulator = ({
               </div>
             </div>
           )}
+
+          {/* Formulario de contacto cuando se alcanza el límite */}
+          {showContactForm && (
+            <form onSubmit={handleContactSubmit} className="bg-white rounded-lg p-4 mb-3 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Déjanos tus datos 📝</h3>
+              <div className="space-y-3">
+                <Input
+                  type="text"
+                  placeholder="Tu nombre completo"
+                  value={contactData.name}
+                  onChange={(e) => setContactData({...contactData, name: e.target.value})}
+                  className="text-sm"
+                  required
+                />
+                <Input
+                  type="email"
+                  placeholder="Tu email"
+                  value={contactData.email}
+                  onChange={(e) => setContactData({...contactData, email: e.target.value})}
+                  className="text-sm"
+                  required
+                />
+                <Input
+                  type="tel"
+                  placeholder="Tu teléfono (WhatsApp)"
+                  value={contactData.phone}
+                  onChange={(e) => setContactData({...contactData, phone: e.target.value})}
+                  className="text-sm"
+                  required
+                />
+                <Button
+                  type="submit"
+                  disabled={isSubmittingContact}
+                  className="w-full bg-primary hover:bg-primary/90 text-white"
+                >
+                  {isSubmittingContact ? "Enviando..." : "Enviar datos 🚀"}
+                </Button>
+              </div>
+            </form>
+          )}
           
           <div ref={messagesEndRef} />
         </div>
@@ -296,13 +429,13 @@ export const WhatsAppSimulator = ({
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Escribe un mensaje..."
+              placeholder={reachedLimit ? "Límite de mensajes alcanzado" : "Escribe un mensaje..."}
               className="flex-1 bg-white text-gray-900 placeholder:text-gray-600 border-none focus-visible:ring-2 focus-visible:ring-primary rounded-full px-4 font-normal text-[15px]"
-              disabled={isTyping}
+              disabled={isTyping || reachedLimit}
             />
             <Button
               onClick={sendMessage}
-              disabled={!inputMessage.trim() || isTyping}
+              disabled={!inputMessage.trim() || isTyping || reachedLimit}
               className="bg-primary hover:bg-primary/90 text-white rounded-full h-11 w-11 p-0 shadow-lg shadow-primary/30 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
             >
               <Send className="w-5 h-5" />

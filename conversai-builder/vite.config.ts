@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     allowedHosts: [
-      "mail-cut-heath-described.trycloudflare.com",
+      "precisely-cause-murray-yard.trycloudflare.com",
       ".trycloudflare.com",
       ".ngrok-free.app",
       ".ngrok.io",

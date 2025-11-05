@@ -1,0 +1,34 @@
+{
+  "businessName": "Tienda Test",
+  "businessType": "products",
+  "businessCategory": "ropa",
+  "priceRange": { "from": "20000", "to": "100000", "currency": "COP" },
+  "products": [
+    { "name": "Camiseta", "price": "35000" },
+    { "name": "Jeans", "price": "89000" }
+  ],
+  "delivery": {
+    "offers": true,
+    "cost": "Gratis sobre $50000",
+    "time": "2-3 días"
+  },
+  "paymentMethods": ["efectivo", "transferencia", "nequi"],
+  "faqs": [
+    {
+      "question": "¿Tienen envío gratis?",
+      "answer": "Sí, en compras sobre $50000"
+    }
+  ],
+  "objectionHandling": {
+    "common": "Es muy caro",
+    "response": "Explico la calidad y ofrezco opciones de pago"
+  },
+  "agentPersonality": {
+    "tone": "friendly",
+    "useEmojis": true,
+    "formalityLevel": "tu"
+  },
+  "requiredInfo": ["nombre", "telefono", "direccion"],
+  "warranty": "30 días de garantía",
+  "email": "test@example.com"
+}
