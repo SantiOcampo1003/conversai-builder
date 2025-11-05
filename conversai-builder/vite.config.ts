@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    allowedHosts: [
+      "mail-cut-heath-described.trycloudflare.com",
+      ".trycloudflare.com",
+      ".ngrok-free.app",
+      ".ngrok.io",
+      "localhost"
+    ]
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
