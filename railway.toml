@@ -1,14 +1,8 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd conversai-builder && npm ci && npm run build"
 
 [deploy]
 startCommand = "cd conversai-builder && npx serve@latest -s dist -l $PORT"
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 10
-
-[nixpacks]
-providers = ["node"]
 
 [nixpacks.phases.setup]
 nixPkgs = ["nodejs_20"]
