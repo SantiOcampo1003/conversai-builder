@@ -16,6 +16,16 @@ export default defineConfig(({ mode }) => ({
       "localhost"
     ]
   },
+  preview: {
+    host: "0.0.0.0",
+    port: 8080,
+    allowedHosts: [
+      ".railway.app",
+      ".up.railway.app",
+      "conversai-builder-production.up.railway.app",
+      "localhost"
+    ]
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
