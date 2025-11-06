@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "cd conversai-builder && npx serve@latest -s dist -l $PORT"
+startCommand = "cd conversai-builder && npm run preview -- --port $PORT --host 0.0.0.0"
 
 [nixpacks.phases.setup]
 nixPkgs = ["nodejs_20"]
