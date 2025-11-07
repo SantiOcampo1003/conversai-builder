@@ -1,11 +1,13 @@
 import { Navbar } from "@/components/Navbar";
 import { WhatsAppSimulator } from "@/components/WhatsAppSimulator";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Sparkles, MessageSquare, Zap } from "lucide-react";
 
 const ChatTest = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const agentIdFromUrl = searchParams.get('agentId');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-darker-surface via-background to-darker-surface">
@@ -65,6 +67,7 @@ const ChatTest = () => {
 
         {/* Simulador */}
         <WhatsAppSimulator 
+          agentId={agentIdFromUrl || undefined}
           agentName="Mi Agente de Ventas" 
         />
 
