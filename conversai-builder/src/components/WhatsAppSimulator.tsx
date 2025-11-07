@@ -61,11 +61,11 @@ export const WhatsAppSimulator = ({
   }, []);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || reachedLimit) return;
+    if (!inputMessage.trim()) return; // TEMPORALMENTE: removido reachedLimit
 
-    // Incrementar contador de mensajes del usuario
-    const newCount = userMessageCount + 1;
-    setUserMessageCount(newCount);
+    // TEMPORALMENTE DESHABILITADO: Incrementar contador de mensajes del usuario
+    // const newCount = userMessageCount + 1;
+    // setUserMessageCount(newCount);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -79,27 +79,27 @@ export const WhatsAppSimulator = ({
     setInputMessage("");
     setIsTyping(true);
 
-    // Si alcanzó el límite de 4 mensajes, mostrar CTA
-    if (newCount >= 4) {
-      setTimeout(() => {
-        setMessages(prev => prev.map(msg => 
-          msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
-        ));
+    // TEMPORALMENTE DESHABILITADO: Si alcanzó el límite de 4 mensajes, mostrar CTA
+    // if (newCount >= 4) {
+    //   setTimeout(() => {
+    //     setMessages(prev => prev.map(msg => 
+    //       msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
+    //     ));
 
-        const ctaMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          text: "🎉 ¡Wow! Veo que te está gustando tu agente. \n\n✨ Esta es solo una demostración. \n\n¿Te gustaría tener este agente trabajando 24/7 en tu WhatsApp real?\n\n💬 Déjanos tus datos y te contactamos en menos de 10 minutos.",
-          sender: "agent",
-          timestamp: new Date(),
-          status: "read"
-        };
-        setMessages(prev => [...prev, ctaMessage]);
-        setIsTyping(false);
-        setReachedLimit(true);
-        setShowContactForm(true);
-      }, 1500);
-      return;
-    }
+    //     const ctaMessage: Message = {
+    //       id: (Date.now() + 1).toString(),
+    //       text: "🎉 ¡Wow! Veo que te está gustando tu agente. \n\n✨ Esta es solo una demostración. \n\n¿Te gustaría tener este agente trabajando 24/7 en tu WhatsApp real?\n\n💬 Déjanos tus datos y te contactamos en menos de 10 minutos.",
+    //       sender: "agent",
+    //       timestamp: new Date(),
+    //       status: "read"
+    //     };
+    //     setMessages(prev => [...prev, ctaMessage]);
+    //     setIsTyping(false);
+    //     setReachedLimit(true);
+    //     setShowContactForm(true);
+    //   }, 1500);
+    //   return;
+    // }
 
     // Simular cambio de estado del mensaje
     setTimeout(() => {
@@ -429,13 +429,13 @@ export const WhatsAppSimulator = ({
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder={reachedLimit ? "Límite de mensajes alcanzado" : "Escribe un mensaje..."}
+              placeholder="Escribe un mensaje..."
               className="flex-1 bg-white text-gray-900 placeholder:text-gray-600 border-none focus-visible:ring-2 focus-visible:ring-primary rounded-full px-4 font-normal text-[15px]"
-              disabled={isTyping || reachedLimit}
+              disabled={isTyping}
             />
-            <Button
-              onClick={sendMessage}
-              disabled={!inputMessage.trim() || isTyping || reachedLimit}
+                <Button
+                  onClick={sendMessage}
+                  disabled={!inputMessage.trim() || isTyping}
               className="bg-primary hover:bg-primary/90 text-white rounded-full h-11 w-11 p-0 shadow-lg shadow-primary/30 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
             >
               <Send className="w-5 h-5" />
