@@ -116,7 +116,7 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      const response = await fetch('https://reductions-raises-cia-housewives.trycloudflare.com/webhook/chat-message', {
+      const response = await fetch('https://julie-mario-promotional-mobility.trycloudflare.com/webhook/chat-message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,7 +219,7 @@ export const WhatsAppSimulator = ({
 
     try {
       // Enviar datos de contacto al webhook
-      const response = await fetch('https://reductions-raises-cia-housewives.trycloudflare.com/webhook/contact-lead', {
+      const response = await fetch('https://julie-mario-promotional-mobility.trycloudflare.com/webhook/contact-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
