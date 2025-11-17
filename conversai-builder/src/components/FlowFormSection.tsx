@@ -62,6 +62,13 @@ export const FlowFormSection = () => {
   
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  
+  // Pasarela de pago
+  const [paymentGateway, setPaymentGateway] = useState("none");
+  const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
+  
+  // Instrucciones personalizadas
+  const [customInstructions, setCustomInstructions] = useState("");
 
   // Funciones para manejar productos
   const addProduct = () => {
@@ -115,17 +122,24 @@ export const FlowFormSection = () => {
     );
   };
 
+  const updatePaymentLink = (productName: string, link: string) => {
+    setPaymentLinks(prev => ({
+      ...prev,
+      [productName]: link
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      const response = await fetch('https://knife-personalized-pounds-urls.trycloudflare.com/webhook/flow-submission', {
+      const response = await fetch('https://yorkshire-cells-residence-sci.trycloudflare.com/webhook/flow-submission', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // Información del negocio
+          // Información del negocio  
           businessName,
           businessType,
           businessCategory,
@@ -159,6 +173,13 @@ export const FlowFormSection = () => {
           // Cierre
           requiredInfo,
           warranty,
+          
+          // Pasarela de pago
+          paymentGateway,
+          paymentLinks: paymentGateway !== 'none' ? paymentLinks : {},
+          
+          // Instrucciones personalizadas
+          customInstructions,
           
       email
         }),
@@ -518,6 +539,55 @@ export const FlowFormSection = () => {
                       ))}
                     </div>
                   </div>
+
+                  {/* PASARELA DE PAGO ONLINE */}
+                  <div className="space-y-4 pt-6 border-t border-border">
+                    <Label className="text-base font-semibold flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-primary" />
+                      Pasarela de Pago Online (Opcional)
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      ¿Tus productos tienen checkout online? Selecciona tu plataforma y agrega los links
+                    </p>
+                    
+                    <Select value={paymentGateway} onValueChange={setPaymentGateway}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona una plataforma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Ninguna (solo presencial/transferencia)</SelectItem>
+                        <SelectItem value="hotmart">Hotmart</SelectItem>
+                        <SelectItem value="stripe">Stripe</SelectItem>
+                        <SelectItem value="mercadopago">MercadoPago</SelectItem>
+                        <SelectItem value="paypal">PayPal</SelectItem>
+                        <SelectItem value="other">Otra</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {paymentGateway !== 'none' && (
+                      <div className="space-y-3 pt-4">
+                        <Label className="text-sm font-medium">
+                          Links de Pago por Producto
+                        </Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Pega el link de checkout para cada producto. El agente lo enviará cuando el cliente confirme la compra.
+                        </p>
+                        {products.filter(p => p.name).map((product) => (
+                          <div key={product.id} className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">
+                              {product.name || `Producto ${product.id}`}
+                            </Label>
+                            <Input
+                              value={paymentLinks[product.name] || ''}
+                              onChange={(e) => updatePaymentLink(product.name, e.target.value)}
+                              placeholder="https://..."
+                              className="bg-background/50"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -705,6 +775,25 @@ export const FlowFormSection = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* INSTRUCCIONES PERSONALIZADAS (OPCIONAL) */}
+              <div className="space-y-3 pt-6 border-t border-border">
+                <Label htmlFor="customInstructions" className="text-lg font-semibold flex items-center gap-2">
+                  <Bot className="w-5 h-5 text-primary" />
+                  Instrucciones Especiales para tu Agente (Opcional)
+                </Label>
+                <Textarea
+                  id="customInstructions"
+                  value={customInstructions}
+                  onChange={(e) => setCustomInstructions(e.target.value)}
+                  placeholder="Ej: Los cursos inician el 26 de enero, NO digas 'acceso inmediato'. Siempre pregunta primero por el principal reto del cliente antes de recomendar productos. Usa un tono empático y femenino..."
+                  className="bg-secondary/50 border-border min-h-[120px] resize-y"
+                  rows={6}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Agrega instrucciones adicionales específicas para tu negocio. El agente seguirá estas instrucciones al pie de la letra.
+                </p>
               </div>
 
               {/* EMAIL DE CONTACTO */}

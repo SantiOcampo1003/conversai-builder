@@ -116,7 +116,7 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      const response = await fetch('https://knife-personalized-pounds-urls.trycloudflare.com/webhook/chat-message', {
+      const response = await fetch('https://yorkshire-cells-residence-sci.trycloudflare.com/webhook/chat-message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -203,6 +203,38 @@ export const WhatsAppSimulator = ({
     });
   };
 
+  // Función para convertir URLs en links clickeables
+  const renderMessageWithLinks = (text: string) => {
+    // Regex más estricta que captura solo URLs válidas sin caracteres extra
+    const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        // Limpiar el link removiendo puntos, comas o paréntesis al final
+        let cleanUrl = part.replace(/[.,;:!?)]+$/, '');
+        
+        return (
+          <a 
+            key={index}
+            href={cleanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              // Prevenir el comportamiento por defecto y abrir en nueva pestaña manualmente
+              e.preventDefault();
+              window.open(cleanUrl, '_blank', 'noopener,noreferrer');
+            }}
+            className="text-blue-600 hover:text-blue-800 underline font-medium break-all cursor-pointer"
+          >
+            {cleanUrl}
+          </a>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -219,7 +251,7 @@ export const WhatsAppSimulator = ({
 
     try {
       // Enviar datos de contacto al webhook
-      const response = await fetch('https://knife-personalized-pounds-urls.trycloudflare.com/webhook/contact-lead', {
+      const response = await fetch('https://yorkshire-cells-residence-sci.trycloudflare.com/webhook/contact-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -352,7 +384,7 @@ export const WhatsAppSimulator = ({
                 }`}
               >
                 <p className="text-[15px] font-normal whitespace-pre-wrap break-words leading-relaxed text-gray-900">
-                  {message.text}
+                  {renderMessageWithLinks(message.text)}
                 </p>
                 <div className="flex items-center justify-end gap-1 mt-1">
                   <span className="text-[10px] text-gray-500">
