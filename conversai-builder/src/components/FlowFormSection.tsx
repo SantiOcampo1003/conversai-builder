@@ -133,7 +133,7 @@ export const FlowFormSection = () => {
     e.preventDefault();
     
     try {
-      const response = await fetch('https://logs-julie-jun-corn.trycloudflare.com/webhook/flow-submission', {
+      const response = await fetch('https://administrators-shot-illustrated-oak.trycloudflare.com/webhook/flow-submission', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
