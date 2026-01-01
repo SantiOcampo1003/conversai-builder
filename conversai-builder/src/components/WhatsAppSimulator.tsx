@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -23,17 +24,20 @@ export const WhatsAppSimulator = ({
   agentName = "Agente de Ventas" 
 }: WhatsAppSimulatorProps) => {
   const { toast } = useToast();
-  const agentId = propsAgentId || localStorage.getItem('currentAgentId') || "demo";
+  const [searchParams] = useSearchParams();
   
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      text: "¡Hola! 👋 Soy tu agente de ventas virtual. ¿En qué puedo ayudarte hoy?",
-      sender: "agent",
-      timestamp: new Date(),
-      status: "read"
+  // Prioridad: 1. Props, 2. URL params, 3. localStorage, 4. default
+  const urlAgentId = searchParams.get('agentId');
+  const agentId = propsAgentId || urlAgentId || localStorage.getItem('currentAgentId') || "demo";
+  
+  // Guardar en localStorage si viene de URL
+  useEffect(() => {
+    if (urlAgentId) {
+      localStorage.setItem('currentAgentId', urlAgentId);
     }
-  ]);
+  }, [urlAgentId]);
+  
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -116,13 +120,16 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      const response = await fetch('https://administrators-shot-illustrated-oak.trycloudflare.com/webhook/chat-message', {
+      // URL de producción
+      const webhookUrl = 'https://easy-agents-n8n.ftppdk.easypanel.host/webhook/chat-message';
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           agentId,
+          userId: `web_user_${Date.now()}`,
           message: inputMessage,
           conversationHistory,
           sessionId: `session_${agentId}`,
@@ -131,6 +138,7 @@ export const WhatsAppSimulator = ({
       });
 
       const data = await response.json();
+      console.log('Respuesta del webhook:', data);
       
       setTimeout(() => {
         // Marcar como leído
@@ -140,7 +148,7 @@ export const WhatsAppSimulator = ({
 
         const agentMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.response || data.message || data.text || "Lo siento, no pude procesar tu mensaje. Intenta de nuevo.",
+          text: data.response || data.output || data.message || data.text || "Lo siento, no pude procesar tu mensaje. Intenta de nuevo.",
           sender: "agent",
           timestamp: new Date(),
           status: "read"
@@ -251,7 +259,7 @@ export const WhatsAppSimulator = ({
 
     try {
       // Enviar datos de contacto al webhook
-      const response = await fetch('https://administrators-shot-illustrated-oak.trycloudflare.com/webhook/contact-lead', {
+      const response = await fetch('https://easy-agents-n8n.ftppdk.easypanel.host/webhook/contact-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
