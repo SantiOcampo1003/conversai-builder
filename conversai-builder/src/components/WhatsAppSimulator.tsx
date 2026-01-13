@@ -84,8 +84,8 @@ export const WhatsAppSimulator = ({
     setInputMessage("");
     setIsTyping(true);
 
-    // Si alcanzó el límite de 3 mensajes, mostrar CTA
-    if (newCount >= 3) {
+    // Si alcanzó el límite de 20 mensajes, mostrar CTA
+    if (newCount >= 20) {
       // ⭐ BLOQUEAR INMEDIATAMENTE
       setReachedLimit(true);
       setShowContactForm(true);
