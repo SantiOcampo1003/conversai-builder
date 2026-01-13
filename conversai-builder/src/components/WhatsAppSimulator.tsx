@@ -48,9 +48,6 @@ export const WhatsAppSimulator = ({
   const [contactData, setContactData] = useState({ name: "", email: "", phone: "" });
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // ⭐ GENERAR userId CONSISTENTE para toda la sesión
-  const [sessionUserId] = useState(() => `web_user_${Date.now()}`);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -87,8 +84,8 @@ export const WhatsAppSimulator = ({
     setInputMessage("");
     setIsTyping(true);
 
-    // Si alcanzó el límite de 20 mensajes, mostrar CTA
-    if (newCount >= 20) {
+    // Si alcanzó el límite de 3 mensajes, mostrar CTA
+    if (newCount >= 3) {
       // ⭐ BLOQUEAR INMEDIATAMENTE
       setReachedLimit(true);
       setShowContactForm(true);
@@ -135,7 +132,7 @@ export const WhatsAppSimulator = ({
         },
         body: JSON.stringify({
           agentId,
-          userId: sessionUserId,  // ⭐ USAR userId consistente
+          userId: `web_user_${Date.now()}`,
           messageText: inputMessage,
           conversationHistory,
           sessionId: `session_${agentId}`,
