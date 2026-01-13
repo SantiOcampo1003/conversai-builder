@@ -84,7 +84,9 @@ export const FlowFormSection = () => {
   const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
   
   // Instrucciones personalizadas
-  const [customInstructions, setCustomInstructions] = useState("");
+  const [customInstructions, setCustomInstructions] = useState<{id: string, text: string}[]>([
+    { id: "1", text: "" }
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -105,6 +107,24 @@ export const FlowFormSection = () => {
     if (products.length > 1) {
       setProducts(products.filter(p => p.id !== id));
     }
+  };
+
+  // Funciones para manejar instrucciones
+  const addInstruction = () => {
+    const newId = (customInstructions.length + 1).toString();
+    setCustomInstructions([...customInstructions, { id: newId, text: "" }]);
+  };
+
+  const removeInstruction = (id: string) => {
+    if (customInstructions.length > 1) {
+      setCustomInstructions(customInstructions.filter(i => i.id !== id));
+    }
+  };
+
+  const updateInstruction = (id: string, text: string) => {
+    setCustomInstructions(customInstructions.map(i => 
+      i.id === id ? { ...i, text } : i
+    ));
   };
 
   const updateProduct = (id: string, field: keyof Product, value: string) => {
@@ -225,7 +245,10 @@ export const FlowFormSection = () => {
           warranty,
           paymentGateway,
           paymentLinks: paymentGateway !== 'none' ? paymentLinks : {},
-          customInstructions,
+          customInstructions: customInstructions
+            .filter(i => i.text.trim())
+            .map((i, index) => `${index + 1}. ${i.text}`)
+            .join('\n'),
       email
         }),
       });
@@ -712,7 +735,7 @@ export const FlowFormSection = () => {
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ type: "spring" }}
-                      className="grid md:grid-cols-2 gap-4 mt-4 overflow-hidden"
+                      className="grid md:grid-cols-2 gap-4 mt-4 pb-2"
                     >
                       <div>
                         <Label className="text-sm font-medium mb-2 block">
@@ -1135,17 +1158,68 @@ export const FlowFormSection = () => {
               </motion.div>
 
               <div className="pt-4 border-t border-border">
-                <Label htmlFor="customInstructions" className="text-sm font-medium mb-2 block">
+                <Label className="text-sm font-medium mb-4 block">
                   Instrucciones especiales (opcional)
                 </Label>
-                <Textarea
-                  id="customInstructions"
-                  value={customInstructions}
-                  onChange={(e) => setCustomInstructions(e.target.value)}
-                  placeholder="Ej: Los cursos inician el 26 de enero. Siempre pregunta primero por el principal reto del cliente..."
-                  className="bg-secondary/50 border-border min-h-[100px] resize-y border-2"
-                  rows={4}
-                />
+                <div className="space-y-4">
+                  {customInstructions.map((instruction, index) => (
+                    <motion.div
+                      key={instruction.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ delay: index * 0.05, type: "spring" }}
+                      whileHover={{ scale: 1.01, transition: { duration: 0.2 } }}
+                    >
+                      <Card className="border-2 border-border/50 bg-gradient-to-br from-secondary/50 to-secondary/30 backdrop-blur-sm hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/10">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <motion.div 
+                              whileHover={{ scale: 1.1 }}
+                              className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg"
+                            >
+                              {index + 1}
+                            </motion.div>
+                            <div className="flex-1">
+                              <Textarea
+                                value={instruction.text}
+                                onChange={(e) => updateInstruction(instruction.id, e.target.value)}
+                                placeholder="Ej: Siempre sé amable y cercano. Pregunta por el nombre del cliente al inicio de la conversación..."
+                                className="bg-background/50 border-2 min-h-[80px] resize-y"
+                                rows={3}
+                              />
+                            </div>
+                            {customInstructions.length > 1 && (
+                              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                                <Button
+                                  type="button"
+                                  onClick={() => removeInstruction(instruction.id)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </motion.div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+
+                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button
+                      type="button"
+                      onClick={addInstruction}
+                      variant="outline"
+                      className="w-full gap-2 border-dashed border-2 py-6 hover:border-primary hover:bg-primary/5 transition-all"
+                    >
+                      <Plus className="w-5 h-5" />
+                      Agregar otra instrucción
+                    </Button>
+                  </motion.div>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-border">
@@ -1160,13 +1234,13 @@ export const FlowFormSection = () => {
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
                       </motion.span>
                     )}
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="tu@email.com"
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
                     className="bg-secondary/50 border-border h-11 border-2 focus:border-primary transition-all"
                     required
                   />

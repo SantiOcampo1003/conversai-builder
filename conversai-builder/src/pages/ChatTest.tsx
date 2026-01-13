@@ -10,81 +10,44 @@ const ChatTest = () => {
   const agentIdFromUrl = searchParams.get('agentId');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darker-surface via-background to-darker-surface">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background overflow-hidden relative">
+      {/* Efectos de fondo futuristas */}
+      <div className="absolute inset-0 bg-grid-white/[0.02] pointer-events-none" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl opacity-20 animate-pulse" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl opacity-20 animate-pulse" style={{animationDelay: '1s'}} />
+      
       <Navbar />
-      <div className="py-8 px-4 pt-24">
-      <div className="max-w-5xl mx-auto">
-        {/* Header mejorado */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/')}
-            className="mb-6 gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Volver a inicio
-          </Button>
-          
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-4">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-medium">Modo Testing</span>
-            </div>
+      <div className="relative z-10 px-4 py-6 min-h-screen flex items-center justify-center">
+        <div className="max-w-7xl mx-auto w-full">
+          {/* Header compacto */}
+          <div className="mb-6 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/')}
+              className="gap-2 hover:gap-3 transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Volver
+            </Button>
             
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Prueba tu <span className="gradient-text">Agente de WhatsApp</span>
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Interactúa con tu agente personalizado y verifica que responda correctamente
-            </p>
+            <div className="flex items-center gap-3 bg-gradient-to-r from-primary/20 to-blue-500/20 backdrop-blur-xl px-4 py-2 rounded-full border border-primary/30">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-sm font-medium">Agente Activo</span>
+              <Sparkles className="w-4 h-4 text-primary" />
+            </div>
+          </div>
+
+          {/* Chat Protagonista */}
+          <div className="relative">
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-blue-500/20 to-purple-500/20 rounded-3xl blur-2xl opacity-30 -z-10" />
+            
+            <WhatsAppSimulator 
+              agentId={agentIdFromUrl || undefined}
+              agentName="Mi Agente de Ventas" 
+            />
           </div>
         </div>
-
-        {/* Tips rápidos */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-card p-4 rounded-lg border border-border/50">
-            <MessageSquare className="w-8 h-8 text-primary mb-2" />
-            <h3 className="font-semibold mb-1">Conversa Natural</h3>
-            <p className="text-sm text-muted-foreground">
-              Habla como lo harías en WhatsApp real
-            </p>
-          </div>
-          <div className="bg-card p-4 rounded-lg border border-border/50">
-            <Zap className="w-8 h-8 text-primary mb-2" />
-            <h3 className="font-semibold mb-1">Prueba Casos Reales</h3>
-            <p className="text-sm text-muted-foreground">
-              Simula preguntas frecuentes de tus clientes
-            </p>
-          </div>
-          <div className="bg-card p-4 rounded-lg border border-border/50">
-            <Sparkles className="w-8 h-8 text-primary mb-2" />
-            <h3 className="font-semibold mb-1">Verifica Respuestas</h3>
-            <p className="text-sm text-muted-foreground">
-              Confirma que el tono y la info sean correctos
-            </p>
-          </div>
-        </div>
-
-        {/* Simulador */}
-        <WhatsAppSimulator 
-          agentId={agentIdFromUrl || undefined}
-          agentName="Mi Agente de Ventas" 
-        />
-
-        {/* Footer con acciones */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-muted-foreground mb-4">
-            ¿No te convence? Puedes editar tu agente en cualquier momento
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => navigate('/')}
-            className="gap-2"
-          >
-            Editar Configuración del Agente
-          </Button>
-        </div>
-      </div>
       </div>
     </div>
   );

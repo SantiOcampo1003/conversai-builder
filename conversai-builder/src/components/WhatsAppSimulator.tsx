@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck } from "lucide-react";
+import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
@@ -44,6 +44,7 @@ export const WhatsAppSimulator = ({
   const [userMessageCount, setUserMessageCount] = useState(0);
   const [reachedLimit, setReachedLimit] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [formSubmitted, setFormSubmitted] = useState(false);
   const [contactData, setContactData] = useState({ name: "", email: "", phone: "" });
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -65,11 +66,11 @@ export const WhatsAppSimulator = ({
   }, []);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim()) return; // TEMPORALMENTE: removido reachedLimit
+    if (!inputMessage.trim() || reachedLimit) return;
 
-    // TEMPORALMENTE DESHABILITADO: Incrementar contador de mensajes del usuario
-    // const newCount = userMessageCount + 1;
-    // setUserMessageCount(newCount);
+    // Incrementar contador de mensajes del usuario
+    const newCount = userMessageCount + 1;
+    setUserMessageCount(newCount);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -83,27 +84,29 @@ export const WhatsAppSimulator = ({
     setInputMessage("");
     setIsTyping(true);
 
-    // TEMPORALMENTE DESHABILITADO: Si alcanzó el límite de 4 mensajes, mostrar CTA
-    // if (newCount >= 4) {
-    //   setTimeout(() => {
-    //     setMessages(prev => prev.map(msg => 
-    //       msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
-    //     ));
+    // Si alcanzó el límite de 3 mensajes, mostrar CTA
+    if (newCount >= 3) {
+      // ⭐ BLOQUEAR INMEDIATAMENTE
+      setReachedLimit(true);
+      setShowContactForm(true);
+      
+      setTimeout(() => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
+        ));
 
-    //     const ctaMessage: Message = {
-    //       id: (Date.now() + 1).toString(),
-    //       text: "🎉 ¡Wow! Veo que te está gustando tu agente. \n\n✨ Esta es solo una demostración. \n\n¿Te gustaría tener este agente trabajando 24/7 en tu WhatsApp real?\n\n💬 Déjanos tus datos y te contactamos en menos de 10 minutos.",
-    //       sender: "agent",
-    //       timestamp: new Date(),
-    //       status: "read"
-    //     };
-    //     setMessages(prev => [...prev, ctaMessage]);
-    //     setIsTyping(false);
-    //     setReachedLimit(true);
-    //     setShowContactForm(true);
-    //   }, 1500);
-    //   return;
-    // }
+        const ctaMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: "🎉 ¡Veo que te está gustando el agente!\n\n✨ Como puedes ver, funciona muy bien.\n\n💼 ¿Te gustaría conectar este agente a tu WhatsApp de ventas real?\n\n📱 Déjanos tus datos y te contactamos en menos de 10 minutos para activarlo.",
+          sender: "agent",
+          timestamp: new Date(),
+          status: "read"
+        };
+        setMessages(prev => [...prev, ctaMessage]);
+        setIsTyping(false);
+      }, 1500);
+      return;
+    }
 
     // Simular cambio de estado del mensaje
     setTimeout(() => {
@@ -130,7 +133,7 @@ export const WhatsAppSimulator = ({
         body: JSON.stringify({
           agentId,
           userId: `web_user_${Date.now()}`,
-          message: inputMessage,
+          messageText: inputMessage,
           conversationHistory,
           sessionId: `session_${agentId}`,
           timestamp: new Date().toISOString()
@@ -192,6 +195,7 @@ export const WhatsAppSimulator = ({
     setUserMessageCount(0);
     setReachedLimit(false);
     setShowContactForm(false);
+    setFormSubmitted(false);
     setContactData({ name: "", email: "", phone: "" });
     toast({
       title: "Conversación reiniciada",
@@ -273,16 +277,22 @@ export const WhatsAppSimulator = ({
       });
 
       if (response.ok) {
+        const submittedName = contactData.name;
+        const submittedPhone = contactData.phone;
+        const submittedEmail = contactData.email;
+        
         toast({
           title: "¡Gracias!",
           description: "Te contactaremos muy pronto 🚀",
         });
         setShowContactForm(false);
+        setFormSubmitted(true); // ⭐ Marcar como enviado
+        setContactData({ name: "", email: "", phone: "" });
         
         // Mensaje de confirmación
         const confirmMessage: Message = {
           id: (Date.now() + 2).toString(),
-          text: `¡Perfecto ${contactData.name}! 🎉\n\nYa tenemos tus datos. Te contactaremos a ${contactData.phone} o ${contactData.email} en los próximos minutos.\n\n¡Gracias por confiar en easy!`,
+          text: `¡Perfecto ${submittedName}! 🎉\n\nYa tenemos tus datos. Te contactaremos a ${submittedPhone} o ${submittedEmail} en los próximos minutos.\n\n¡Gracias por confiar en easy!`,
           sender: "agent",
           timestamp: new Date(),
           status: "read"
@@ -308,22 +318,23 @@ export const WhatsAppSimulator = ({
   };
 
   return (
-    <div className="max-w-md mx-auto">
-      <Card className="overflow-hidden shadow-2xl border-2 border-primary/30 shadow-primary/10">
+    <div className="max-w-6xl mx-auto h-full flex items-center justify-center">
+      <Card className="overflow-hidden shadow-2xl border-2 border-primary/40 shadow-primary/20 bg-gradient-to-br from-card/95 to-card/90 backdrop-blur-xl relative w-full flex flex-col" style={{ height: 'calc(100vh - 200px)', maxHeight: '800px', minHeight: '600px' }}>
         {/* Header estilo WhatsApp */}
-        <div className="bg-primary text-white p-4">
+        <div className="flex-shrink-0 bg-gradient-to-r from-primary via-primary/95 to-primary/90 text-white p-5 backdrop-blur-xl border-b border-white/10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-11 h-11 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ring-2 ring-white/30">
+            <div className="flex items-center gap-4">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-white/20 rounded-full blur-md group-hover:blur-lg transition-all" />
+                <div className="relative w-14 h-14 bg-gradient-to-br from-white/30 to-white/10 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-2xl ring-2 ring-white/40 backdrop-blur-sm">
                   {agentName.charAt(0)}
                 </div>
                 {isOnline && (
-                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-primary"></div>
+                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-400 rounded-full border-3 border-primary shadow-lg animate-pulse"></div>
                 )}
               </div>
               <div>
-                <h3 className="font-semibold text-base">{agentName}</h3>
+                <h3 className="font-bold text-lg mb-0.5">{agentName}</h3>
                 <p className="text-xs text-white/90 flex items-center gap-1">
                   {isTyping ? (
                     <>
@@ -372,9 +383,9 @@ export const WhatsAppSimulator = ({
 
         {/* Área de mensajes */}
         <div 
-          className="h-[550px] overflow-y-auto p-4 bg-[#efeae2] relative"
+          className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-[#f0ebe5] to-[#efeae2] relative"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d9d9d9' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d9d9d9' fill-opacity='0.08'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
           }}
         >
           {messages.map((message) => (
@@ -385,10 +396,10 @@ export const WhatsAppSimulator = ({
               } animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-3 py-2 shadow-md ${
+                className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-lg backdrop-blur-sm transition-all hover:scale-[1.02] ${
                   message.sender === "user"
-                    ? "bg-[#d9fdd3] text-gray-900 rounded-tr-none"
-                    : "bg-white text-gray-900 rounded-tl-none"
+                    ? "bg-gradient-to-br from-[#d9fdd3] to-[#c8f0c3] text-gray-900 rounded-tr-none border border-green-200/50"
+                    : "bg-gradient-to-br from-white to-gray-50 text-gray-900 rounded-tl-none border border-gray-200/50"
                 }`}
               >
                 <p className="text-[15px] font-normal whitespace-pre-wrap break-words leading-relaxed text-gray-900">
@@ -421,15 +432,21 @@ export const WhatsAppSimulator = ({
 
           {/* Formulario de contacto cuando se alcanza el límite */}
           {showContactForm && (
-            <form onSubmit={handleContactSubmit} className="bg-white rounded-lg p-4 mb-3 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Déjanos tus datos 📝</h3>
+            <form onSubmit={handleContactSubmit} className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-5 mb-4 shadow-2xl border-2 border-primary/30 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center text-white shadow-lg text-lg">
+                  📝
+                </div>
+                <h3 className="text-base font-bold text-gray-900">Conecta tu WhatsApp</h3>
+              </div>
+              <p className="text-xs text-gray-600 mb-4">Te contactaremos en menos de 10 minutos para activar tu agente</p>
               <div className="space-y-3">
                 <Input
                   type="text"
                   placeholder="Tu nombre completo"
                   value={contactData.name}
                   onChange={(e) => setContactData({...contactData, name: e.target.value})}
-                  className="text-sm"
+                  className="text-sm border-2 border-gray-200 focus:border-primary transition-all"
                   required
                 />
                 <Input
@@ -437,7 +454,7 @@ export const WhatsAppSimulator = ({
                   placeholder="Tu email"
                   value={contactData.email}
                   onChange={(e) => setContactData({...contactData, email: e.target.value})}
-                  className="text-sm"
+                  className="text-sm border-2 border-gray-200 focus:border-primary transition-all"
                   required
                 />
                 <Input
@@ -445,15 +462,22 @@ export const WhatsAppSimulator = ({
                   placeholder="Tu teléfono (WhatsApp)"
                   value={contactData.phone}
                   onChange={(e) => setContactData({...contactData, phone: e.target.value})}
-                  className="text-sm"
+                  className="text-sm border-2 border-gray-200 focus:border-primary transition-all"
                   required
                 />
                 <Button
                   type="submit"
                   disabled={isSubmittingContact}
-                  className="w-full bg-primary hover:bg-primary/90 text-white"
+                  className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white shadow-lg hover:shadow-xl transition-all h-12 text-base font-semibold"
                 >
-                  {isSubmittingContact ? "Enviando..." : "Enviar datos 🚀"}
+                  {isSubmittingContact ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Enviando...
+                    </span>
+                  ) : (
+                    "Conectar mi WhatsApp 🚀"
+                  )}
                 </Button>
               </div>
             </form>
@@ -463,36 +487,28 @@ export const WhatsAppSimulator = ({
         </div>
 
         {/* Input de mensaje */}
-        <div className="bg-[#f0f0f0] p-3 border-t border-border/50">
-          <div className="flex items-center gap-2">
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#f5f5f5] via-[#f0f0f0] to-[#f5f5f5] p-5 border-t border-border/50 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Escribe un mensaje..."
-              className="flex-1 bg-white text-gray-900 placeholder:text-gray-600 border-none focus-visible:ring-2 focus-visible:ring-primary rounded-full px-4 font-normal text-[15px]"
-              disabled={isTyping}
+              placeholder={formSubmitted ? "Gracias por tu interés. Te contactaremos pronto 🚀" : (reachedLimit ? "Por favor completa el formulario para continuar..." : "Escribe tu mensaje...")}
+              className="flex-1 bg-white text-gray-900 placeholder:text-gray-500 border-2 border-gray-200/50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary/50 rounded-full px-6 py-6 font-normal text-base shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isTyping || reachedLimit}
             />
                 <Button
                   onClick={sendMessage}
-                  disabled={!inputMessage.trim() || isTyping}
-              className="bg-primary hover:bg-primary/90 text-white rounded-full h-11 w-11 p-0 shadow-lg shadow-primary/30 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+                  disabled={!inputMessage.trim() || isTyping || reachedLimit}
+              className="bg-gradient-to-br from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white rounded-full h-14 w-14 p-0 shadow-xl shadow-primary/40 transition-all hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed relative group"
             >
-              <Send className="w-5 h-5" />
+              <div className="absolute inset-0 bg-white/20 rounded-full blur-md group-hover:blur-lg transition-all" />
+              <Send className="w-6 h-6 relative z-10" />
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* Info adicional */}
-      <div className="mt-4 text-center">
-        <p className="text-sm text-muted-foreground">
-          💡 Este es un simulador. El agente responderá según tu configuración.
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Agent ID: <code className="bg-secondary px-2 py-0.5 rounded">{agentId}</code>
-        </p>
-      </div>
     </div>
   );
 };
