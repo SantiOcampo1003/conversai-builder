@@ -24,9 +24,9 @@ export const Navbar = () => {
             <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Inicio
             </a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+            {/* <a href="#pricing" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Precios
-            </a>
+            </a> */}
             <a href="#flow-form" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Crear Agente
             </a>

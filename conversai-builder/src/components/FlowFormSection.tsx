@@ -1318,14 +1318,21 @@ export const FlowFormSection = () => {
               <div key={step.id} className="flex items-center flex-1">
                 <div className="flex flex-col items-center flex-1">
                   <motion.div
-                    whileHover={{ scale: 1.1 }}
+                    whileHover={{ scale: currentStep > step.id ? 1.15 : 1.1 }}
+                    whileTap={{ scale: currentStep > step.id ? 0.95 : 1 }}
                     animate={{
                       scale: currentStep >= step.id ? 1 : 0.9,
+                    }}
+                    onClick={() => {
+                      // Solo permitir ir hacia atrás a pasos ya completados
+                      if (currentStep > step.id) {
+                        setCurrentStep(step.id);
+                      }
                     }}
                     className={`
                       w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all relative
                       ${currentStep > step.id
-                        ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/30"
+                        ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/30 cursor-pointer hover:shadow-primary/50"
                         : currentStep === step.id
                         ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground ring-4 ring-primary/20 shadow-lg shadow-primary/50"
                         : "bg-secondary text-muted-foreground"
@@ -1353,7 +1360,14 @@ export const FlowFormSection = () => {
                       )}
                     </AnimatePresence>
                   </motion.div>
-                  <span className="text-xs font-medium text-center hidden sm:block">
+                  <span 
+                    className={`text-xs font-medium text-center hidden sm:block ${currentStep > step.id ? 'cursor-pointer hover:text-primary transition-colors' : ''}`}
+                    onClick={() => {
+                      if (currentStep > step.id) {
+                        setCurrentStep(step.id);
+                      }
+                    }}
+                  >
                     {step.title}
                   </span>
                 </div>

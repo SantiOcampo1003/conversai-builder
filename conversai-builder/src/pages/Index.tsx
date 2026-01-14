@@ -1,7 +1,7 @@
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { ValuePropositionSection } from "@/components/ValuePropositionSection";
-import { PricingSection } from "@/components/PricingSection";
+// import { PricingSection } from "@/components/PricingSection";
 import { FlowFormSection } from "@/components/FlowFormSection";
 
 const Index = () => {
@@ -13,7 +13,7 @@ const Index = () => {
       <div id="flow-form">
         <FlowFormSection />
       </div>
-      <PricingSection />
+      {/* <PricingSection /> */}
     </div>
   );
 };
