@@ -84,21 +84,58 @@ Genera un archivo vacío en `supabase/migrations/` con timestamp.
 
 ## Exponer Postgres via ngrok (para N8N remoto)
 
-Si necesitas conectar N8N (en Easypanel) a la DB local:
+Para que N8N en Easypanel pueda leer/escribir en tu DB local necesitas exponer el puerto de Postgres con un tunnel TCP.
+
+### 1. Instalar ngrok
+
+```bash
+brew install ngrok/ngrok/ngrok
+```
+
+O descarga desde https://ngrok.com/download
+
+### 2. Autenticarte (solo la primera vez)
+
+```bash
+ngrok config add-authtoken TU_TOKEN
+```
+
+> Obtén tu token en https://dashboard.ngrok.com/get-started/your-authtoken
+
+### 3. Levantar el tunnel
 
 ```bash
 ngrok tcp 54322
 ```
 
-Usar en N8N:
-- **Host:** `X.tcp.ngrok.io`
-- **Port:** el que asigne ngrok
-- **Database:** postgres
-- **User:** postgres
-- **Password:** postgres
-- **SSL:** disable
+Ngrok mostrará algo como:
+```
+Forwarding  tcp://6.tcp.ngrok.io:10642 -> localhost:54322
+```
 
-> ⚠️ La URL de ngrok gratuito cambia cada vez que reinicias el tunnel.
+### 4. Configurar la credencial en N8N
+
+En N8N → Credentials → Postgres → Nueva credencial:
+
+| Campo    | Valor                  |
+|----------|------------------------|
+| Host     | `6.tcp.ngrok.io`       |
+| Port     | `10642`                |
+| Database | `postgres`             |
+| User     | `postgres`             |
+| Password | `postgres`             |
+| SSL      | `disable`              |
+
+> ⚠️ La URL de ngrok gratuito cambia cada vez que reinicias el tunnel. Debes actualizar la credencial en N8N cada vez.
+
+### 5. Workflows locales configurados
+
+Los siguientes workflows en N8N usan la credencial `Postgres account LOCAL`:
+
+| Workflow            | Path webhook                  | Descripción                        |
+|---------------------|-------------------------------|------------------------------------|
+| `chat-message-local`| `/webhook/chat-message-local` | Chat con IA + historial en DB local|
+| `contact-lead-local`| `/webhook/contact-lead-local` | Notificación Gmail (DB via SDK)    |
 
 ---
 
