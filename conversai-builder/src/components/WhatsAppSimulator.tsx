@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface Message {
   id: string;
@@ -24,6 +26,8 @@ export const WhatsAppSimulator = ({
   agentName = "Agente de Ventas" 
 }: WhatsAppSimulatorProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
   // Prioridad: 1. Props, 2. URL params, 3. localStorage, 4. default
@@ -126,8 +130,7 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      // URL de producción
-      const webhookUrl = 'https://easy-agents-n8n.ftppdk.easypanel.host/webhook/chat-message';
+      const webhookUrl = import.meta.env.VITE_N8N_CHAT_WEBHOOK as string;
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -252,7 +255,7 @@ export const WhatsAppSimulator = ({
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!contactData.name || !contactData.email || !contactData.phone) {
       toast({
         title: "Datos incompletos",
@@ -265,42 +268,64 @@ export const WhatsAppSimulator = ({
     setIsSubmittingContact(true);
 
     try {
-      // Enviar datos de contacto al webhook
-      const response = await fetch('https://easy-agents-n8n.ftppdk.easypanel.host/webhook/contact-lead', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...contactData,
-          agentId,
-          source: 'chat-simulator',
-          timestamp: new Date().toISOString()
-        }),
-      });
+      const submittedName = contactData.name;
+      const submittedPhone = contactData.phone;
+      const submittedEmail = contactData.email;
 
-      if (response.ok) {
-        const submittedName = contactData.name;
-        const submittedPhone = contactData.phone;
-        const submittedEmail = contactData.email;
-        
-        toast({
-          title: "¡Gracias!",
-          description: "Te contactaremos muy pronto 🚀",
+      // 1. Insertar el contacto como cliente en Supabase
+      const { error: clientError } = await supabase
+        .from('clients')
+        .insert({
+          name: submittedName,
+          email: submittedEmail,
+          phone: submittedPhone,
         });
-        setShowContactForm(false);
-        setFormSubmitted(true); // ⭐ Marcar como enviado
-        setContactData({ name: "", email: "", phone: "" });
-        
-        // Mensaje de confirmación
-        const confirmMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          text: `¡Perfecto ${submittedName}! 🎉\n\nYa tenemos tus datos. Te contactaremos a ${submittedPhone} o ${submittedEmail} en los próximos minutos.\n\n¡Gracias por confiar en easy!`,
-          sender: "agent",
-          timestamp: new Date(),
-          status: "read"
-        };
-        setMessages(prev => [...prev, confirmMessage]);
+
+      if (clientError) {
+        console.error('Error guardando cliente:', clientError);
+        // No bloquear al usuario si falla la inserción, continuar con el flujo
+      }
+
+      // 2. Notificar por email via N8N (solo para el envío de Gmail)
+      try {
+        await fetch(import.meta.env.VITE_N8N_CONTACT_WEBHOOK as string, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...contactData,
+            agentId,
+            source: 'chat-simulator',
+            timestamp: new Date().toISOString(),
+          }),
+        });
+      } catch (webhookError) {
+        // El email es secundario, no bloquear el flujo si falla
+        console.warn('Error enviando notificación por email:', webhookError);
+      }
+
+      toast({
+        title: "¡Gracias!",
+        description: "Te contactaremos muy pronto 🚀",
+      });
+      setShowContactForm(false);
+      setFormSubmitted(true);
+      setContactData({ name: "", email: "", phone: "" });
+
+      // Mensaje de confirmación
+      const confirmMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        text: `¡Perfecto ${submittedName}! 🎉\n\nYa tenemos tus datos. Te contactaremos a ${submittedPhone} o ${submittedEmail} en los próximos minutos.\n\n¡Gracias por confiar en easy!`,
+        sender: "agent",
+        timestamp: new Date(),
+        status: "read"
+      };
+      setMessages(prev => [...prev, confirmMessage]);
+
+      // Si el usuario está autenticado, redirigir al dashboard
+      if (user) {
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2500);
       }
     } catch (error) {
       console.error('Error:', error);

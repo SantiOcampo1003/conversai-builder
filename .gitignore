@@ -27,3 +27,8 @@ Thumbs.db
 dist/
 build/
 
+# Supabase
+supabase/.branches
+supabase/.temp
+supabase/functions/.env
+
