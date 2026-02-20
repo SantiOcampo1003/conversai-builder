@@ -3,10 +3,17 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { FeedbackDialog } from "@/components/FeedbackDialog";
 
 interface Message {
   id: string;
@@ -19,11 +26,13 @@ interface Message {
 interface WhatsAppSimulatorProps {
   agentId?: string;
   agentName?: string;
+  previewMode?: boolean;
 }
 
-export const WhatsAppSimulator = ({ 
+export const WhatsAppSimulator = ({
   agentId: propsAgentId,
-  agentName = "Agente de Ventas" 
+  agentName = "Agente de Ventas",
+  previewMode = false,
 }: WhatsAppSimulatorProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -91,14 +100,14 @@ export const WhatsAppSimulator = ({
     setInputMessage("");
     setIsTyping(true);
 
-    // Si alcanzó el límite de 4 mensajes, mostrar CTA
-    if (newCount >= 4) {
+    // Si alcanzó el límite de 4 mensajes, mostrar CTA (solo fuera de preview)
+    if (newCount >= 4 && !previewMode) {
       // ⭐ BLOQUEAR INMEDIATAMENTE
       setReachedLimit(true);
       setShowContactForm(true);
-      
+
       setTimeout(() => {
-        setMessages(prev => prev.map(msg => 
+        setMessages(prev => prev.map(msg =>
           msg.id === userMessage.id ? { ...msg, status: "read" as const } : msg
         ));
 
@@ -398,13 +407,29 @@ export const WhatsAppSimulator = ({
               >
                 <RefreshCw className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/20 h-9 w-9"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:bg-white/20 h-9 w-9"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <FeedbackDialog
+                    trigger={
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Enviar Feedback
+                      </DropdownMenuItem>
+                    }
+                    defaultCategory="chat"
+                    metadata={{ agentId }}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -459,7 +484,7 @@ export const WhatsAppSimulator = ({
           )}
 
           {/* Formulario de contacto cuando se alcanza el límite */}
-          {showContactForm && (
+          {showContactForm && !previewMode && (
             <form onSubmit={handleContactSubmit} className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-5 mb-4 shadow-2xl border-2 border-primary/30 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center text-white shadow-lg text-lg">

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { Bot, MessageSquare, Calendar, Tag, Plus, Loader2 } from 'lucide-react'
+import { Bot, MessageSquare, Calendar, Tag, Plus, Loader2, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -214,15 +214,26 @@ export function AgentsSection() {
                 </div>
 
                 {/* Actions */}
-                <Button
-                  onClick={() => navigate(`/chat-test?agentId=${agent.agent_id}`)}
-                  size="sm"
-                  className="w-full gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/40 transition-all"
-                  variant="ghost"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  Probar agente
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={() => navigate(`/chat-test?agentId=${agent.agent_id}&mode=preview`)}
+                    size="sm"
+                    className="w-full gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/40 transition-all"
+                    variant="ghost"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Probar agente
+                  </Button>
+                  <Button
+                    onClick={() => navigate(`/dashboard/agent/${agent.agent_id}`)}
+                    size="sm"
+                    className="w-full gap-2 bg-secondary/80 hover:bg-secondary text-foreground border border-border hover:border-border/80 transition-all"
+                    variant="ghost"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    Personalizar agente
+                  </Button>
+                </div>
               </div>
             )
           })}

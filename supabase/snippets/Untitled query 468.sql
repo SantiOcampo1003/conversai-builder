@@ -1,10 +1,1 @@
-DROP POLICY IF EXISTS "members_can_view_own_client" ON public.clients;
-
-  CREATE POLICY "members_can_view_own_client"
-    ON public.clients FOR SELECT
-    TO authenticated
-    USING (
-      auth_user_id = auth.uid()
-      OR
-      id IN (SELECT public.get_my_client_ids())
-    );
+SELECT agent_id FROM whatsapp_lines WHERE evolution_instance_name = line_1771540187683_upr5q6ryj

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { supabase } from '@/lib/supabase'
 import {
   Bot,
   LayoutDashboard,
@@ -15,6 +16,14 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentsSection } from '@/components/dashboard/AgentsSection'
+import { WAInteractionsSection } from '@/components/dashboard/WAInteractionsSection'
+import { WAConnectionsSection } from '@/components/dashboard/WAConnectionsSection'
+import { OverviewSection } from '@/components/dashboard/OverviewSection'
+import { AccountSection } from '@/components/dashboard/AccountSection'
+import { TokensSection } from '@/components/dashboard/TokensSection'
+import { AgentUsageSection } from '@/components/dashboard/AgentUsageSection'
+import { FeedbackDialog } from '@/components/FeedbackDialog'
+import { Button } from '@/components/ui/button'
 
 // ── Secciones del sidebar ──────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -55,11 +64,115 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [allowedSections, setAllowedSections] = useState<Set<string> | null>(null) // null = loading
+  const [availableTokens, setAvailableTokens] = useState<number | null>(null)
+  const [feedbackExpanded, setFeedbackExpanded] = useState(true)
+  const [feedbackHover, setFeedbackHover] = useState(false)
+
+  // Cargar rol y permisos del usuario actual
+  useEffect(() => {
+    if (!user) return
+    const loadPermissions = async () => {
+      const { data: membership } = await supabase
+        .from('client_members')
+        .select('id, role')
+        .eq('auth_user_id', user.id)
+        .eq('status', 'active')
+        .single()
+
+      if (!membership) {
+        setAllowedSections(new Set())
+        return
+      }
+
+      setUserRole(membership.role)
+
+      // Admin siempre tiene acceso a todo
+      if (membership.role === 'admin') {
+        setAllowedSections(new Set(NAV_ITEMS.map(i => i.id)))
+        return
+      }
+
+      // Cargar permisos desde member_permissions
+      const { data: perms } = await supabase
+        .from('member_permissions')
+        .select('section, permissions')
+        .eq('member_id', membership.id)
+
+      // Solo mostrar secciones donde tiene al menos 'view'
+      const allowed = new Set<string>()
+      for (const p of perms || []) {
+        if (Array.isArray(p.permissions) && p.permissions.includes('view')) {
+          allowed.add(p.section)
+        }
+      }
+      // 'account' siempre visible para que pueda ver sus propios datos
+      allowed.add('account')
+      setAllowedSections(allowed)
+
+      // Si la sección activa no está permitida, redirigir a la primera permitida
+      setActiveSection(prev =>
+        allowed.has(prev) ? prev : (Array.from(allowed)[0] as SectionId) ?? 'account'
+      )
+    }
+
+    const loadTokens = async () => {
+      const { data: membership } = await supabase
+        .from('client_members')
+        .select('client_id')
+        .eq('auth_user_id', user.id)
+        .eq('status', 'active')
+        .single()
+
+      if (!membership) return
+
+      const { data: balance } = await supabase
+        .from('token_balances')
+        .select('available_tokens')
+        .eq('client_id', membership.client_id)
+        .single()
+
+      if (balance) {
+        setAvailableTokens(balance.available_tokens)
+      }
+    }
+
+    loadPermissions()
+    loadTokens()
+  }, [user])
+
+  // Animar botón de feedback al cargar y cada minuto
+  useEffect(() => {
+    // Expandir inicialmente
+    setFeedbackExpanded(true)
+    const collapseTimer = setTimeout(() => {
+      setFeedbackExpanded(false)
+    }, 3000)
+
+    // Expandir cada minuto
+    const expandInterval = setInterval(() => {
+      setFeedbackExpanded(true)
+      setTimeout(() => {
+        setFeedbackExpanded(false)
+      }, 3000)
+    }, 60000) // Cada 60 segundos
+
+    return () => {
+      clearTimeout(collapseTimer)
+      clearInterval(expandInterval)
+    }
+  }, []) // Solo al montar el componente
 
   const handleSignOut = async () => {
     await signOut()
     navigate('/')
   }
+
+  // Filtrar nav items según permisos (null = aún cargando, mostrar todo temporalmente)
+  const visibleNavItems = allowedSections === null
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter(i => allowedSections.has(i.id))
 
   const activeItem = NAV_ITEMS.find((i) => i.id === activeSection)!
 
@@ -70,11 +183,11 @@ export default function Dashboard() {
   const userName = user?.user_metadata?.name || user?.email || 'Usuario'
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="h-screen overflow-hidden bg-background flex">
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
         className={cn(
-          'relative flex flex-col border-r border-border bg-card transition-all duration-300 shrink-0',
+          'relative flex flex-col border-r border-border bg-card transition-all duration-300 shrink-0 h-full',
           collapsed ? 'w-16' : 'w-60'
         )}
       >
@@ -99,7 +212,7 @@ export default function Dashboard() {
 
         {/* Nav items */}
         <nav className="flex-1 py-4 flex flex-col gap-1 px-2 overflow-y-auto">
-          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+          {visibleNavItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveSection(id)}
@@ -146,11 +259,18 @@ export default function Dashboard() {
       </aside>
 
       {/* ── Main area ───────────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 h-full relative">
         {/* Top bar */}
         <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-foreground font-semibold">{activeItem.label}</span>
+            {availableTokens !== null && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-full">
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-medium text-foreground">
+                  {new Intl.NumberFormat('es-ES').format(availableTokens)} tokens
+                </span>
+              </div>
+            )}
           </div>
 
           {/* User info */}
@@ -168,9 +288,26 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {activeSection === 'agents' ? (
+        <main className={cn(
+          'flex-1 min-h-0 p-6',
+          activeSection === 'wa-interactions'
+            ? 'overflow-hidden flex flex-col'
+            : 'overflow-y-auto'
+        )}>
+          {activeSection === 'overview' ? (
+            <OverviewSection />
+          ) : activeSection === 'agents' ? (
             <AgentsSection />
+          ) : activeSection === 'wa-interactions' ? (
+            <WAInteractionsSection />
+          ) : activeSection === 'wa-connections' ? (
+            <WAConnectionsSection />
+          ) : activeSection === 'usage' ? (
+            <AgentUsageSection />
+          ) : activeSection === 'tokens' ? (
+            <TokensSection />
+          ) : activeSection === 'account' ? (
+            <AccountSection />
           ) : (
             <SectionPlaceholder
               id={activeSection}
@@ -179,6 +316,51 @@ export default function Dashboard() {
             />
           )}
         </main>
+
+        {/* Floating Feedback Button */}
+        <div
+          className="fixed bottom-6 right-6 z-50"
+          onMouseEnter={() => setFeedbackHover(true)}
+          onMouseLeave={() => setFeedbackHover(false)}
+        >
+          <div className="w-[152px] h-14 flex items-center justify-end">
+            <FeedbackDialog
+              trigger={
+                <Button
+                  size="lg"
+                  className={cn(
+                    "rounded-full shadow-2xl shadow-primary/30 h-14 bg-gradient-to-br from-primary to-primary/90 hover:from-primary/90 hover:to-primary hover:scale-105 transition-all duration-300 flex items-center",
+                    (feedbackExpanded || feedbackHover) ? "px-6 gap-2 justify-start" : "w-14 px-0 justify-center"
+                  )}
+                >
+                  <MessageSquare className={cn("h-5 w-5 shrink-0", !(feedbackExpanded || feedbackHover) && "mx-auto")} />
+                  <span
+                    className={cn(
+                      "font-semibold whitespace-nowrap overflow-hidden transition-all duration-300",
+                      (feedbackExpanded || feedbackHover) ? "max-w-[100px] opacity-100" : "max-w-0 opacity-0"
+                    )}
+                  >
+                    Feedback
+                  </span>
+                </Button>
+              }
+              defaultCategory={
+                activeSection === 'overview' ? 'dashboard' :
+                activeSection === 'agents' ? 'agents' :
+                activeSection === 'wa-interactions' ? 'whatsapp' :
+                activeSection === 'wa-connections' ? 'whatsapp' :
+                activeSection === 'usage' ? 'dashboard' :
+                activeSection === 'tokens' ? 'tokens' :
+                activeSection === 'account' ? 'general' :
+                'general'
+              }
+              metadata={{
+                section: activeSection,
+                userRole: userRole,
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )

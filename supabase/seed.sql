@@ -34,24 +34,31 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 5. Agente de prueba vinculado al cliente
 INSERT INTO public.agents (id, agent_id, email, business_name, business_type, business_category, client_id,
-  products, payment_methods, faqs, agent_personality, created_at) VALUES
+  price_range, products, payment_methods, delivery, faqs, agent_personality, required_info, created_at) VALUES
 (1, 'agent_dev_001', 'dev@test.com', 'Pizzería Test Dev', 'restaurant', 'food',
   '11111111-1111-1111-1111-111111111111',
+  '{"from": "25000", "to": "35000", "currency": "COP"}'::jsonb,
   '[
-    {"name": "Pizza Hawaiana", "price": 25000, "description": "Pizza con piña y jamón"},
-    {"name": "Pizza Pepperoni", "price": 28000, "description": "Pizza con pepperoni"},
-    {"name": "Pizza Vegetariana", "price": 26000, "description": "Pizza con verduras"}
+    {"name": "Pizza Hawaiana", "price": "25000", "description": "Pizza con piña y jamón"},
+    {"name": "Pizza Pepperoni", "price": "28000", "description": "Pizza con pepperoni"},
+    {"name": "Pizza Vegetariana", "price": "26000", "description": "Pizza con verduras"},
+    {"name": "Pizza Especial", "price": "35000", "description": "Pizza con ingredientes premium"}
   ]'::jsonb,
   '["cash", "transfer", "nequi", "card"]'::jsonb,
+  '{"offers": true, "cost": "5000", "time": "30-40 minutos"}'::jsonb,
   '[
     {"question": "¿Cuál es el horario?", "answer": "Atendemos de lunes a sábado, 11am a 10pm"},
     {"question": "¿Hacen domicilio?", "answer": "Sí, domicilio gratis en pedidos mayores a $40.000"}
   ]'::jsonb,
   '{"tone": "friendly", "formality": "casual", "use_emojis": true}'::jsonb,
+  '["name", "phone", "address"]'::jsonb,
   NOW())
 ON CONFLICT (id) DO UPDATE SET
   business_name = EXCLUDED.business_name,
-  client_id = EXCLUDED.client_id;
+  client_id = EXCLUDED.client_id,
+  price_range = EXCLUDED.price_range,
+  delivery = EXCLUDED.delivery,
+  required_info = EXCLUDED.required_info;
 
 -- 6. Historial de chat de ejemplo
 INSERT INTO public.chat_history (id, agent_id, user_id, role, message, created_at) VALUES
@@ -72,7 +79,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 8. Usuarios de prueba para auth (login con email/password: Test1234!)
 --    admin@test.com  → rol admin (acceso total)
---    agent@test.com  → rol agent-administrator (sin recarga de tokens)
+--    agent@test.com  → rol agent-manager (gestor de agentes)
 INSERT INTO auth.users (
   instance_id, id, aud, role, email,
   encrypted_password,
@@ -134,7 +141,7 @@ INSERT INTO public.client_members (client_id, auth_user_id, role, permissions, s
   (
     '11111111-1111-1111-1111-111111111111',
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    'agent-administrator',
+    'agent-manager',
     ARRAY['agents:*','whatsapp-interactions:*','whatsapp-connections:*','agents-usage:*','tokens:view','tokens:history','account:*'],
     'active', NOW()
   )

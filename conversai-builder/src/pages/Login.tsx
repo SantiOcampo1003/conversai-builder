@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,27 +7,78 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Bot } from 'lucide-react'
 
 export default function Login() {
-  const { user, signInWithEmail, signInWithGoogle } = useAuth()
+  const { user, signInWithEmail, signInWithGoogle, signUpWithEmail } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null)
+  const [isSignup, setIsSignup] = useState(false)
 
-  // Si ya está autenticado, redirigir al dashboard
+  // Decodificar parámetros de invitación desde base64
   useEffect(() => {
-    if (user) navigate('/dashboard', { replace: true })
-  }, [user, navigate])
+    const stateParam = searchParams.get('state')
+    if (stateParam) {
+      try {
+        const decoded = JSON.parse(atob(stateParam))
+        if (decoded.email) {
+          setEmail(decoded.email)
+          setInviteEmail(decoded.email)
+          setIsSignup(true) // Si viene de invitación, mostrar registro por defecto
+        }
+      } catch (err) {
+        console.error('Error decoding state param:', err)
+      }
+    }
+  }, [searchParams])
+
+  // Si ya está autenticado, redirigir
+  useEffect(() => {
+    if (user) {
+      const pendingToken = localStorage.getItem('pendingInviteToken')
+
+      if (pendingToken) {
+        // Si hay token de invitación pendiente, siempre ir ahí primero
+        navigate(`/accept-invite?token=${pendingToken}`, { replace: true })
+      } else {
+        const stateParam = searchParams.get('state')
+        let redirect = null
+
+        if (stateParam) {
+          try {
+            const decoded = JSON.parse(atob(stateParam))
+            redirect = decoded.redirect
+          } catch (err) {
+            console.error('Error decoding redirect:', err)
+          }
+        }
+
+        if (redirect) {
+          navigate(redirect, { replace: true })
+        } else {
+          navigate('/dashboard', { replace: true })
+        }
+      }
+    }
+  }, [user, navigate, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
-    const { error } = await signInWithEmail(email, password)
+    const { error } = isSignup
+      ? await signUpWithEmail(email, password)
+      : await signInWithEmail(email, password)
 
     if (error) {
-      setError('Email o contraseña incorrectos')
+      if (isSignup) {
+        setError('Error al crear la cuenta. Verifica que el email sea válido y la contraseña tenga al menos 6 caracteres.')
+      } else {
+        setError('Email o contraseña incorrectos')
+      }
       setLoading(false)
     }
     // Si no hay error, el useEffect de arriba detecta el user y redirige
@@ -61,9 +112,49 @@ export default function Login() {
         {/* Card */}
         <div className="bg-card border border-border rounded-2xl p-8 shadow-2xl">
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold text-foreground">Bienvenido de vuelta</h1>
-            <p className="text-muted-foreground text-sm mt-1">Inicia sesión para acceder a tu dashboard</p>
+            <h1 className="text-2xl font-bold text-foreground">
+              {inviteEmail
+                ? 'Únete al equipo'
+                : isSignup
+                  ? 'Crea tu cuenta'
+                  : 'Bienvenido de vuelta'}
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              {inviteEmail
+                ? 'Crea una cuenta para aceptar la invitación'
+                : isSignup
+                  ? 'Crea tu cuenta para empezar a usar easy AI Agents'
+                  : 'Inicia sesión para acceder a tu dashboard'}
+            </p>
           </div>
+
+          {/* Tabs Login/Signup - Solo si NO viene de invitación */}
+          {!inviteEmail && (
+            <div className="flex gap-2 mb-6 p-1 bg-secondary rounded-lg">
+              <button
+                type="button"
+                onClick={() => setIsSignup(false)}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                  !isSignup
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Iniciar sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSignup(true)}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                  isSignup
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Registrarse
+              </button>
+            </div>
+          )}
 
           {/* Google */}
           <Button
@@ -89,6 +180,16 @@ export default function Login() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {inviteEmail && (
+              <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4">
+                <p className="text-xs text-primary font-medium">
+                  📧 Invitación de equipo
+                </p>
+                <p className="text-xs text-primary/80 mt-1">
+                  Crea tu cuenta con el email <span className="font-semibold">{inviteEmail}</span> para aceptar la invitación.
+                </p>
+              </div>
+            )}
             <div>
               <Label htmlFor="email" className="text-sm font-medium">Email</Label>
               <Input
@@ -102,7 +203,9 @@ export default function Login() {
               />
             </div>
             <div>
-              <Label htmlFor="password" className="text-sm font-medium">Contraseña</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Contraseña {isSignup && <span className="text-xs text-muted-foreground font-normal">(mínimo 6 caracteres)</span>}
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -111,6 +214,7 @@ export default function Login() {
                 placeholder="••••••••"
                 className="mt-1.5 h-11 border-2 bg-secondary/50"
                 required
+                minLength={isSignup ? 6 : undefined}
               />
             </div>
 
@@ -128,24 +232,27 @@ export default function Login() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Iniciando sesión...
+                  {isSignup ? 'Creando cuenta...' : 'Iniciando sesión...'}
                 </>
               ) : (
-                'Iniciar sesión'
+                isSignup ? 'Crear cuenta' : 'Iniciar sesión'
               )}
             </Button>
           </form>
         </div>
 
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          ¿No tienes cuenta?{' '}
-          <button
-            onClick={() => navigate('/')}
-            className="text-primary hover:underline font-medium"
-          >
-            Crea tu agente gratis
-          </button>
-        </p>
+        {!inviteEmail && (
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            {isSignup ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'}{' '}
+            <button
+              type="button"
+              onClick={() => setIsSignup(!isSignup)}
+              className="text-primary hover:underline font-medium"
+            >
+              {isSignup ? 'Inicia sesión' : 'Regístrate'}
+            </button>
+          </p>
+        )}
       </div>
     </div>
   )

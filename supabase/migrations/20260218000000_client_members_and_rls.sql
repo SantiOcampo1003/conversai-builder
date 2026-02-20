@@ -35,9 +35,9 @@ CREATE TABLE IF NOT EXISTS public.client_members (
   CONSTRAINT client_members_unique_user_client
     UNIQUE (client_id, auth_user_id),
   CONSTRAINT client_members_role_check
-    CHECK (role IN ('admin', 'collaborator', 'viewer', 'agent-administrator')),
+    CHECK (role IN ('admin', 'billing', 'viewer', 'agent-manager')),
   CONSTRAINT client_members_status_check
-    CHECK (status IN ('active', 'invited', 'suspended'))
+    CHECK (status IN ('active', 'pending', 'suspended'))
 );
 
 ALTER TABLE public.client_members OWNER TO postgres;
