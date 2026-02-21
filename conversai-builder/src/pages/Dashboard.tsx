@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
@@ -13,6 +13,7 @@ import {
   Wifi,
   BarChart3,
   Users,
+  Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentsSection } from '@/components/dashboard/AgentsSection'
@@ -22,8 +23,10 @@ import { OverviewSection } from '@/components/dashboard/OverviewSection'
 import { AccountSection } from '@/components/dashboard/AccountSection'
 import { TokensSection } from '@/components/dashboard/TokensSection'
 import { AgentUsageSection } from '@/components/dashboard/AgentUsageSection'
+import { SuperAdminSection } from '@/components/dashboard/SuperAdminSection'
 import { FeedbackDialog } from '@/components/FeedbackDialog'
 import { Button } from '@/components/ui/button'
+import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 
 // ── Secciones del sidebar ──────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -36,7 +39,7 @@ const NAV_ITEMS = [
   { id: 'account',        label: 'Cuenta y Equipo',      icon: Users },
 ] as const
 
-type SectionId = typeof NAV_ITEMS[number]['id']
+type SectionId = typeof NAV_ITEMS[number]['id'] | 'super-admin'
 
 // ── Placeholder de cada sección ────────────────────────────────────────────
 function SectionPlaceholder({ id, label, icon: Icon }: { id: SectionId; label: string; icon: React.ElementType }) {
@@ -62,13 +65,18 @@ function SectionPlaceholder({ id, label, icon: Icon }: { id: SectionId; label: s
 export default function Dashboard() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const { section } = useParams<{ section: string }>()
   const [collapsed, setCollapsed] = useState(false)
-  const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [userRole, setUserRole] = useState<string | null>(null)
   const [allowedSections, setAllowedSections] = useState<Set<string> | null>(null) // null = loading
   const [availableTokens, setAvailableTokens] = useState<number | null>(null)
+  const [clientName, setClientName] = useState<string | null>(null)
   const [feedbackExpanded, setFeedbackExpanded] = useState(true)
   const [feedbackHover, setFeedbackHover] = useState(false)
+  const { isSuperAdmin, isLoading: loadingSuperAdmin } = useIsSuperAdmin()
+
+  // Determinar la sección activa desde la URL
+  const activeSection = (section || 'overview') as SectionId
 
   // Cargar rol y permisos del usuario actual
   useEffect(() => {
@@ -88,8 +96,8 @@ export default function Dashboard() {
 
       setUserRole(membership.role)
 
-      // Admin siempre tiene acceso a todo
-      if (membership.role === 'admin') {
+      // Admin y super_admin siempre tienen acceso a todo
+      if (membership.role === 'admin' || membership.role === 'super_admin') {
         setAllowedSections(new Set(NAV_ITEMS.map(i => i.id)))
         return
       }
@@ -110,37 +118,78 @@ export default function Dashboard() {
       // 'account' siempre visible para que pueda ver sus propios datos
       allowed.add('account')
       setAllowedSections(allowed)
-
-      // Si la sección activa no está permitida, redirigir a la primera permitida
-      setActiveSection(prev =>
-        allowed.has(prev) ? prev : (Array.from(allowed)[0] as SectionId) ?? 'account'
-      )
     }
 
     const loadTokens = async () => {
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
+      try {
+        const { data: membership, error: memberError } = await supabase
+          .from('client_members')
+          .select('client_id')
+          .eq('auth_user_id', user.id)
+          .eq('status', 'active')
+          .single()
 
-      if (!membership) return
+        if (memberError) {
+          console.error('Error loading membership:', memberError)
+          return
+        }
 
-      const { data: balance } = await supabase
-        .from('token_balances')
-        .select('available_tokens')
-        .eq('client_id', membership.client_id)
-        .single()
+        if (!membership) {
+          console.warn('No membership found for user')
+          return
+        }
 
-      if (balance) {
-        setAvailableTokens(balance.available_tokens)
+        // Obtener información del cliente
+        const { data: client, error: clientError } = await supabase
+          .from('clients')
+          .select('company_name, name')
+          .eq('id', membership.client_id)
+          .single()
+
+        if (!clientError && client) {
+          setClientName(client.company_name || client.name)
+        }
+
+        const { data: balance, error: balanceError } = await supabase
+          .from('token_balances')
+          .select('available_tokens')
+          .eq('client_id', membership.client_id)
+          .single()
+
+        if (balanceError) {
+          console.error('Error loading token balance:', balanceError)
+          return
+        }
+
+        if (balance) {
+          setAvailableTokens(balance.available_tokens)
+        }
+      } catch (err) {
+        console.error('Error in loadTokens:', err)
       }
     }
 
     loadPermissions()
     loadTokens()
   }, [user])
+
+  // Redirigir si la sección actual no está permitida
+  useEffect(() => {
+    if (allowedSections === null) return // Aún cargando permisos
+
+    // Si la sección es super-admin, verificar si es super admin
+    if (activeSection === 'super-admin' && !isSuperAdmin) {
+      const firstAllowed = Array.from(allowedSections)[0] as SectionId ?? 'account'
+      navigate(`/dashboard/${firstAllowed}`, { replace: true })
+      return
+    }
+
+    // Si la sección no está permitida, redirigir a la primera permitida
+    if (!allowedSections.has(activeSection) && activeSection !== 'super-admin') {
+      const firstAllowed = Array.from(allowedSections)[0] as SectionId ?? 'account'
+      navigate(`/dashboard/${firstAllowed}`, { replace: true })
+    }
+  }, [activeSection, allowedSections, isSuperAdmin, navigate])
 
   // Animar botón de feedback al cargar y cada minuto
   useEffect(() => {
@@ -169,12 +218,18 @@ export default function Dashboard() {
     navigate('/')
   }
 
+  // Construir nav items dinámicamente (agregar super-admin si aplica)
+  const navItems = [
+    ...NAV_ITEMS,
+    ...(isSuperAdmin ? [{ id: 'super-admin' as const, label: 'Super Admin', icon: Shield }] : []),
+  ]
+
   // Filtrar nav items según permisos (null = aún cargando, mostrar todo temporalmente)
   const visibleNavItems = allowedSections === null
-    ? NAV_ITEMS
-    : NAV_ITEMS.filter(i => allowedSections.has(i.id))
+    ? navItems
+    : navItems.filter(i => allowedSections.has(i.id) || i.id === 'super-admin')
 
-  const activeItem = NAV_ITEMS.find((i) => i.id === activeSection)!
+  const activeItem = navItems.find((i) => i.id === activeSection)!
 
   const userInitial = (user?.user_metadata?.name || user?.email || 'U')
     .charAt(0)
@@ -215,7 +270,7 @@ export default function Dashboard() {
           {visibleNavItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveSection(id)}
+              onClick={() => navigate(`/dashboard/${id}`)}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm font-medium transition-all duration-150 w-full text-left group',
                 activeSection === id
@@ -280,6 +335,11 @@ export default function Dashboard() {
               {user?.user_metadata?.name && (
                 <span className="text-xs text-muted-foreground">{user.email}</span>
               )}
+              {clientName && (
+                <span className="text-xs font-medium text-primary mt-0.5">
+                  {clientName}
+                </span>
+              )}
             </div>
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-primary/30">
               {userInitial}
@@ -308,6 +368,8 @@ export default function Dashboard() {
             <TokensSection />
           ) : activeSection === 'account' ? (
             <AccountSection />
+          ) : activeSection === 'super-admin' ? (
+            <SuperAdminSection />
           ) : (
             <SectionPlaceholder
               id={activeSection}

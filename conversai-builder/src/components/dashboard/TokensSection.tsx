@@ -14,6 +14,11 @@ import {
   ArrowDownCircle,
   Gift,
   RotateCcw,
+  Loader2,
+  AlertCircle,
+  Package,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -63,6 +68,21 @@ interface AgentUsage {
   tokens_used: number
 }
 
+interface ServiceOrder {
+  id: string
+  service_id: string
+  custom_description: string | null
+  price_cop: number
+  price_usd: number | null
+  payment_status: 'pending' | 'paid' | 'cancelled' | 'refunded'
+  service_status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
+  created_at: string
+  service?: {
+    display_name: string
+    description: string
+  }
+}
+
 // ── Transaction Icon ───────────────────────────────────────────────────────
 function TransactionIcon({ type }: { type: TokenTransaction['type'] }) {
   const config = {
@@ -99,11 +119,57 @@ function TransactionTypeBadge({ type }: { type: TokenTransaction['type'] }) {
   )
 }
 
+// ── Payment Status Badge ───────────────────────────────────────────────────
+function PaymentStatusBadge({
+  type,
+  paymentStatus
+}: {
+  type: TokenTransaction['type']
+  paymentStatus: string | null
+}) {
+  // Solo mostrar estado para transacciones de compra
+  if (type !== 'purchase') {
+    return <span className="text-xs text-muted-foreground">-</span>
+  }
+
+  const config = {
+    pending: {
+      label: 'Pendiente',
+      className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+      icon: Loader2,
+      animate: true
+    },
+    approved: {
+      label: 'Confirmado',
+      className: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+      icon: ArrowUpCircle,
+      animate: false
+    },
+    rejected: {
+      label: 'Rechazado',
+      className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
+      icon: AlertCircle,
+      animate: false
+    },
+  }
+
+  const status = (paymentStatus || 'pending') as keyof typeof config
+  const { label, className, icon: Icon, animate } = config[status] || config.pending
+
+  return (
+    <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium border inline-flex items-center gap-1', className)}>
+      <Icon className={cn('h-3 w-3', animate && 'animate-spin')} />
+      {label}
+    </span>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export function TokensSection() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [purchasing, setPurchasing] = useState<string | null>(null)
+  const [payingService, setPayingService] = useState<string | null>(null)
 
   // Query para datos de tokens
   const { data: tokensData, isLoading } = useQuery({
@@ -145,6 +211,24 @@ export function TokensSection() {
         .eq('active', true)
         .order('sort_order')
 
+      // Obtener órdenes de servicio del cliente
+      const { data: serviceOrdersData, error: serviceOrdersError } = await supabase
+        .from('service_orders')
+        .select(`
+          *,
+          service:services(display_name, description)
+        `)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+
+      if (serviceOrdersError) {
+        console.error('Error fetching service orders:', serviceOrdersError)
+      }
+
+      console.log('🔍 DEBUG - Client ID:', clientId)
+      console.log('🔍 DEBUG - Service Orders:', serviceOrdersData)
+      console.log('🔍 DEBUG - Service Orders Count:', serviceOrdersData?.length || 0)
+
       // Calcular uso por agente
       const { data: agentsData } = await supabase
         .from('agents')
@@ -182,6 +266,7 @@ export function TokensSection() {
         transactions: transactionsData || [],
         packages: packagesData || [],
         agentUsage: usage,
+        serviceOrders: serviceOrdersData || [],
       }
     },
     enabled: !!user,
@@ -195,7 +280,13 @@ export function TokensSection() {
   const transactions = tokensData?.transactions || []
   const packages = tokensData?.packages || []
   const agentUsage = tokensData?.agentUsage || []
+  const serviceOrders = (tokensData?.serviceOrders || []) as ServiceOrder[]
   const loading = isLoading
+
+  // Debug: log serviceOrders in component
+  console.log('🎨 RENDER - serviceOrders:', serviceOrders)
+  console.log('🎨 RENDER - serviceOrders.length:', serviceOrders.length)
+  console.log('🎨 RENDER - Will show section?', serviceOrders.length > 0)
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('es-ES').format(num)
@@ -223,6 +314,11 @@ export function TokensSection() {
     ? Math.round((balance.used_tokens / balance.total_tokens) * 100)
     : 0
 
+  // Filtrar transacciones pendientes
+  const pendingTransactions = transactions.filter(
+    (tx) => tx.type === 'purchase' && tx.payment_status === 'pending'
+  )
+
   const handlePurchase = async (packageId: string) => {
     if (!clientId) {
       console.error('Client ID not found')
@@ -240,6 +336,7 @@ export function TokensSection() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          type: 'token', // ← NUEVO: indicar tipo de pago
           clientId,
           packageId,
         }),
@@ -264,6 +361,55 @@ export function TokensSection() {
       alert('Error al procesar el pago. Por favor intenta de nuevo.')
     } finally {
       setPurchasing(null)
+    }
+  }
+
+  const handlePayService = async (order: ServiceOrder) => {
+    if (!clientId || !user) {
+      console.error('Client ID or user not found')
+      return
+    }
+
+    try {
+      setPayingService(order.id)
+
+      const webhookUrl = import.meta.env.VITE_N8N_CREATE_PAYMENT_WEBHOOK
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'service', // ← Tipo servicio
+          serviceOrderId: order.id,
+          clientId: clientId,
+          price: order.price_cop,
+          priceUsd: order.price_usd,
+          serviceName: order.service?.display_name || 'Servicio Profesional',
+          description: order.custom_description || order.service?.description || '',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al crear el pago')
+      }
+
+      const data = await response.json()
+      console.log('Service payment response:', data)
+
+      // Invalidar cache antes de redirigir (para cuando regrese)
+      await queryClient.invalidateQueries({ queryKey: ['tokens-data'] })
+
+      // Redirigir a MercadoPago
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      }
+    } catch (err) {
+      console.error('Error paying service:', err)
+      alert('Error al procesar el pago del servicio. Por favor intenta de nuevo.')
+    } finally {
+      setPayingService(null)
     }
   }
 
@@ -305,6 +451,70 @@ export function TokensSection() {
           Gestiona tu balance y consumo de tokens
         </p>
       </div>
+
+      {/* Pending Payments Alert */}
+      {pendingTransactions.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-xl p-4 animate-pulse">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 text-amber-600 animate-spin" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                  Pago en proceso
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  Pendiente
+                </span>
+              </div>
+              <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
+                Tienes {pendingTransactions.length} {pendingTransactions.length === 1 ? 'pago pendiente' : 'pagos pendientes'} de confirmación.
+                Los tokens se acreditarán automáticamente cuando se confirme el pago.
+              </p>
+              <div className="space-y-2">
+                {pendingTransactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="bg-white/50 dark:bg-black/20 rounded-lg p-3 border border-amber-500/20"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ShoppingCart className="h-4 w-4 text-amber-600" />
+                        <div>
+                          <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                            {tx.tokens} tokens
+                          </p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            {formatDate(tx.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                          {tx.amount_cop ? formatCurrency(tx.amount_cop) : 'N/A'}
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Esperando confirmación
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['tokens-data'] })}
+              className="flex-shrink-0 p-2 hover:bg-amber-500/10 rounded-lg transition-colors"
+              title="Actualizar estado"
+            >
+              <RotateCcw className="h-4 w-4 text-amber-600" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Balance Cards */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -506,6 +716,7 @@ export function TokensSection() {
                   <th className="pb-3 text-xs font-medium text-muted-foreground">Fecha</th>
                   <th className="pb-3 text-xs font-medium text-muted-foreground">Tipo</th>
                   <th className="pb-3 text-xs font-medium text-muted-foreground">Agente</th>
+                  <th className="pb-3 text-xs font-medium text-muted-foreground">Estado</th>
                   <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
                     Tokens
                   </th>
@@ -515,47 +726,196 @@ export function TokensSection() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.slice(0, 20).map((tx) => (
-                  <tr key={tx.id} className="border-b border-border/50 last:border-0">
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <TransactionIcon type={tx.type} />
-                        <span className="text-sm text-muted-foreground">
-                          {formatDate(tx.created_at)}
+                {transactions.slice(0, 20).map((tx) => {
+                  const isPending = tx.type === 'purchase' && tx.payment_status === 'pending'
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className={cn(
+                        'border-b border-border/50 last:border-0',
+                        isPending && 'bg-amber-50/50 dark:bg-amber-950/10'
+                      )}
+                    >
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          <TransactionIcon type={tx.type} />
+                          <span className="text-sm text-muted-foreground">
+                            {formatDate(tx.created_at)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3">
+                        <TransactionTypeBadge type={tx.type} />
+                      </td>
+                      <td className="py-3">
+                        <span className="text-sm text-foreground">
+                          {tx.agent_id || tx.description || '-'}
                         </span>
-                      </div>
-                    </td>
-                    <td className="py-3">
-                      <TransactionTypeBadge type={tx.type} />
-                    </td>
-                    <td className="py-3">
-                      <span className="text-sm text-foreground">
-                        {tx.agent_id || tx.description || '-'}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <span
-                        className={cn(
-                          'text-sm font-medium',
-                          tx.type === 'consumption' && 'text-red-600',
-                          tx.type === 'purchase' && 'text-green-600',
-                          tx.type === 'bonus' && 'text-purple-600',
-                          tx.type === 'refund' && 'text-blue-600'
-                        )}
-                      >
-                        {tx.type === 'consumption' ? '-' : '+'}
-                        {formatNumber(Math.abs(tx.tokens))}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <span className="text-sm text-muted-foreground">
-                        {tx.amount_cop ? formatCurrency(tx.amount_cop) : '-'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3">
+                        <PaymentStatusBadge type={tx.type} paymentStatus={tx.payment_status} />
+                      </td>
+                      <td className="py-3 text-right">
+                        <span
+                          className={cn(
+                            'text-sm font-medium',
+                            tx.type === 'consumption' && 'text-red-600',
+                            tx.type === 'purchase' && !isPending && 'text-green-600',
+                            tx.type === 'purchase' && isPending && 'text-amber-600',
+                            tx.type === 'bonus' && 'text-purple-600',
+                            tx.type === 'refund' && 'text-blue-600'
+                          )}
+                        >
+                          {tx.type === 'consumption' ? '-' : '+'}
+                          {formatNumber(Math.abs(tx.tokens))}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right">
+                        <span className="text-sm text-muted-foreground">
+                          {tx.amount_cop ? formatCurrency(tx.amount_cop) : '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Servicios Profesionales */}
+      {serviceOrders.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-4 border-purple-500 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Package className="h-5 w-5 text-purple-600" />
+            <h2 className="text-lg font-bold text-purple-900 dark:text-purple-100">🚀 SERVICIOS PROFESIONALES 🚀</h2>
+          </div>
+
+          <div className="space-y-3">
+            {serviceOrders.map((order) => {
+              const isPending = order.payment_status === 'pending'
+              const isCompleted = order.service_status === 'completed'
+
+              return (
+                <div
+                  key={order.id}
+                  className={cn(
+                    'border rounded-lg p-4',
+                    isPending && 'border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold text-foreground">
+                          {order.service?.display_name}
+                        </h3>
+                        {isCompleted && (
+                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                        )}
+                      </div>
+                      {order.custom_description && (
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {order.custom_description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Payment Status Badge */}
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-xs font-medium border inline-flex items-center gap-1',
+                            order.payment_status === 'pending' &&
+                              'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+                            order.payment_status === 'paid' &&
+                              'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+                            order.payment_status === 'cancelled' &&
+                              'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20'
+                          )}
+                        >
+                          {order.payment_status === 'pending' && (
+                            <>
+                              <Clock className="h-3 w-3 animate-spin" />
+                              Pago pendiente
+                            </>
+                          )}
+                          {order.payment_status === 'paid' && (
+                            <>
+                              <CheckCircle2 className="h-3 w-3" />
+                              Pagado
+                            </>
+                          )}
+                          {order.payment_status === 'cancelled' && (
+                            <>
+                              <XCircle className="h-3 w-3" />
+                              Cancelado
+                            </>
+                          )}
+                        </span>
+
+                        {/* Service Status Badge */}
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-xs font-medium border',
+                            order.service_status === 'not_started' &&
+                              'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20',
+                            order.service_status === 'in_progress' &&
+                              'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+                            order.service_status === 'completed' &&
+                              'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+                            order.service_status === 'on_hold' &&
+                              'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                          )}
+                        >
+                          {order.service_status === 'not_started' && 'No iniciado'}
+                          {order.service_status === 'in_progress' && 'En progreso'}
+                          {order.service_status === 'completed' && 'Completado'}
+                          {order.service_status === 'on_hold' && 'En espera'}
+                          {order.service_status === 'cancelled' && 'Cancelado'}
+                        </span>
+
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(order.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-foreground">
+                          {formatCurrency(order.price_cop)}
+                        </div>
+                        {order.price_usd && (
+                          <div className="text-xs text-muted-foreground">
+                            ${order.price_usd} USD
+                          </div>
+                        )}
+                      </div>
+                      {isPending && (
+                        <Button
+                          size="sm"
+                          onClick={() => handlePayService(order)}
+                          disabled={payingService === order.id}
+                          className="w-full min-w-[120px]"
+                        >
+                          {payingService === order.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Procesando...
+                            </>
+                          ) : (
+                            <>
+                              <CircleDollarSign className="h-4 w-4 mr-2" />
+                              Pagar ahora
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

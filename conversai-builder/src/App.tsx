@@ -49,7 +49,8 @@ function AppRoutes() {
       <Route path="/" element={<Index />} />
       <Route path="/login" element={<Login />} />
       <Route path="/chat-test" element={<ChatTest />} />
-      <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+      <Route path="/dashboard" element={<Navigate to="/dashboard/overview" replace />} />
+      <Route path="/dashboard/:section" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
       <Route path="/dashboard/agent/:agentId" element={<PrivateRoute><AgentEditor /></PrivateRoute>} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route path="/payment/failure" element={<PaymentFailure />} />

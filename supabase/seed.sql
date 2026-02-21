@@ -12,7 +12,8 @@ END $$;
 
 -- 1. Cliente de prueba
 INSERT INTO public.clients (id, name, email, phone, company_name, created_at) VALUES
-('11111111-1111-1111-1111-111111111111', 'Juan Desarrollador', 'dev@test.com', '+573001234567', 'Test Company SAS', NOW())
+('11111111-1111-1111-1111-111111111111', 'Juan Desarrollador', 'dev@test.com', '+573001234567', 'Test Company SAS', NOW()),
+('00000000-0000-0000-0000-000000000000', 'EasyAgents Platform', 'superadmin@easyagents.space', '+573001234567', 'EasyAgents', NOW())
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Paquetes de tokens disponibles
@@ -22,14 +23,16 @@ INSERT INTO public.token_packages (id, name, display_name, tokens, price_cop, pr
 ('66666666-6666-6666-6666-666666666666', 'enterprise_1000', '1000 Créditos', 1000, 80000, 20.00, 'Paquete empresarial', 200, true, 3)
 ON CONFLICT (id) DO NOTHING;
 
--- 3. Balance de tokens para el cliente
+-- 3. Balance de tokens para los clientes
 INSERT INTO public.token_balances (id, client_id, total_tokens, used_tokens, is_active, created_at) VALUES
-('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 100, 25, true, NOW())
+('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 100, 25, true, NOW()),
+('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 1000, 0, true, NOW())
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Transacción de tokens de bienvenida
+-- 4. Transacciones de tokens de bienvenida
 INSERT INTO public.token_transactions (id, client_id, type, tokens, description, created_at) VALUES
-('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'bonus', 100, 'Tokens de bienvenida - desarrollo', NOW())
+('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'bonus', 100, 'Tokens de bienvenida - desarrollo', NOW()),
+('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'bonus', 1000, 'Tokens ilimitados para super admin', NOW())
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. Agente de prueba vinculado al cliente
@@ -80,6 +83,11 @@ ON CONFLICT (id) DO NOTHING;
 -- 8. Usuarios de prueba para auth (login con email/password: Test1234!)
 --    admin@test.com  → rol admin (acceso total)
 --    agent@test.com  → rol agent-manager (gestor de agentes)
+--    superadmin@easyagents.space → SUPER ADMIN de toda la plataforma
+
+-- Deshabilitar triggers temporalmente para evitar que cree clientes duplicados
+SET session_replication_role = replica;
+
 INSERT INTO auth.users (
   instance_id, id, aud, role, email,
   encrypted_password,
@@ -109,6 +117,17 @@ INSERT INTO auth.users (
     '{"provider":"email","providers":["email"]}', '{"name":"Agent Admin Test"}',
     NOW(), NOW(),
     '', '', '', ''
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    'authenticated', 'authenticated',
+    'superadmin@easyagents.space',
+    extensions.crypt('Test1234!', extensions.gen_salt('bf')),
+    NOW(), NOW(),
+    '{"provider":"email","providers":["email"]}', '{"name":"EasyAgents Super Admin"}',
+    NOW(), NOW(),
+    '', '', '', ''
   )
 ON CONFLICT (id) DO NOTHING;
 
@@ -128,6 +147,13 @@ VALUES
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","email":"agent@test.com","email_verified":true}',
     'email', NOW(), NOW(), NOW()
+  ),
+  (
+    extensions.uuid_generate_v4(),
+    'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","email":"superadmin@easyagents.space","email_verified":true}',
+    'email', NOW(), NOW(), NOW()
   )
 ON CONFLICT (provider_id, provider) DO NOTHING;
 
@@ -144,8 +170,16 @@ INSERT INTO public.client_members (client_id, auth_user_id, role, permissions, s
     'agent-manager',
     ARRAY['agents:*','whatsapp-interactions:*','whatsapp-connections:*','agents-usage:*','tokens:view','tokens:history','account:*'],
     'active', NOW()
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    'super_admin', NULL, 'active', NOW()
   )
 ON CONFLICT (client_id, auth_user_id) DO NOTHING;
+
+-- Re-habilitar triggers después de crear las membresías
+SET session_replication_role = default;
 
 -- 9. Lead de ejemplo capturado
 INSERT INTO public.leads (id, agent_id, name, phone, email, address, notes, status, source, created_at) VALUES
@@ -157,8 +191,23 @@ SELECT setval('public.agents_id_seq', GREATEST((SELECT MAX(id) FROM public.agent
 SELECT setval('public.chat_history_id_seq', GREATEST((SELECT MAX(id) FROM public.chat_history), 1));
 SELECT setval('public.leads_id_seq', GREATEST((SELECT MAX(id) FROM public.leads), 1));
 
+-- 10. Orden de servicio de ejemplo para el cliente de prueba
+INSERT INTO public.service_orders (id, service_id, client_id, custom_description, price_cop, price_usd, payment_status, service_status, created_at) VALUES
+(
+  'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+  '33333333-0000-0000-0000-000000000003', -- Setup Básico
+  '11111111-1111-1111-1111-111111111111', -- Cliente de prueba
+  'Implementación inicial del agente de pizzería con configuración personalizada',
+  150000,
+  37.50,
+  'paid',
+  'in_progress',
+  NOW() - INTERVAL '2 days'
+)
+ON CONFLICT (id) DO NOTHING;
+
 -- Confirmación
 DO $$
 BEGIN
-  RAISE NOTICE 'Seed completado: 1 cliente, 1 agente, 3 paquetes, 6 chats, 1 lead';
+  RAISE NOTICE 'Seed completado: 1 cliente, 1 agente, 3 paquetes, 6 chats, 1 lead, 1 orden de servicio';
 END $$;

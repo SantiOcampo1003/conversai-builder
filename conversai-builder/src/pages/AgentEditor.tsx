@@ -114,7 +114,6 @@ export default function AgentEditor() {
         .select('client_id')
         .eq('auth_user_id', user.id)
         .eq('status', 'active')
-        .limit(1)
         .single()
 
       if (!membership) { setLoading(false); return }
