@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { Bot, MessageSquare, Users, MessagesSquare, Loader2, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -68,6 +69,7 @@ function MetricCard({
 
 export function OverviewSection() {
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
 
   const [metrics, setMetrics] = useState<Metrics>({
     totalAgents: 0,
@@ -79,29 +81,16 @@ export function OverviewSection() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !clientId || loadingClientId) return
 
     const fetchData = async () => {
       setLoading(true)
 
-      // 1. Obtener client_id
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
-
-      if (!membership) {
-        setLoading(false)
-        return
-      }
-
-      // 2. Obtener agentes
+      // 1. Obtener agentes del cliente impersonalizado
       const { data: agentsData } = await supabase
         .from('agents')
         .select('agent_id, business_name')
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
 
       const agentIds = (agentsData || []).map(a => a.agent_id)
       const totalAgents = agentIds.length
@@ -168,7 +157,7 @@ export function OverviewSection() {
     }
 
     fetchData()
-  }, [user])
+  }, [user, clientId, loadingClientId])
 
   return (
     <div className="flex flex-col gap-6">

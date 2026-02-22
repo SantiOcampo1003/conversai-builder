@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -19,9 +20,19 @@ import {
   Package,
   CheckCircle2,
   XCircle,
+  Eye,
+  Calendar,
+  CreditCard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface TokenBalance {
@@ -167,27 +178,17 @@ function PaymentStatusBadge({
 // ── Main Component ─────────────────────────────────────────────────────────
 export function TokensSection() {
   const { user } = useAuth()
+  const { clientId } = useClientContext()
   const queryClient = useQueryClient()
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [payingService, setPayingService] = useState<string | null>(null)
+  const [selectedService, setSelectedService] = useState<ServiceOrder | null>(null)
 
   // Query para datos de tokens
   const { data: tokensData, isLoading } = useQuery({
-    queryKey: ['tokens-data', user?.id],
+    queryKey: ['tokens-data', clientId],
     queryFn: async () => {
-      if (!user) return null
-
-      // Obtener client_id del usuario
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
-
-      if (!membership) return null
-
-      const clientId = membership.client_id
+      if (!clientId) return null
 
       // Obtener balance de tokens
       const { data: balanceData } = await supabase
@@ -269,13 +270,12 @@ export function TokensSection() {
         serviceOrders: serviceOrdersData || [],
       }
     },
-    enabled: !!user,
+    enabled: !!clientId,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })
 
-  const clientId = tokensData?.clientId
   const balance = tokensData?.balance || null
   const transactions = tokensData?.transactions || []
   const packages = tokensData?.packages || []
@@ -891,26 +891,37 @@ export function TokensSection() {
                           </div>
                         )}
                       </div>
-                      {isPending && (
+                      <div className="flex flex-col gap-1.5 w-full min-w-[120px]">
                         <Button
                           size="sm"
-                          onClick={() => handlePayService(order)}
-                          disabled={payingService === order.id}
-                          className="w-full min-w-[120px]"
+                          variant="outline"
+                          onClick={() => setSelectedService(order)}
+                          className="w-full"
                         >
-                          {payingService === order.id ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Procesando...
-                            </>
-                          ) : (
-                            <>
-                              <CircleDollarSign className="h-4 w-4 mr-2" />
-                              Pagar ahora
-                            </>
-                          )}
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver detalles
                         </Button>
-                      )}
+                        {isPending && (
+                          <Button
+                            size="sm"
+                            onClick={() => handlePayService(order)}
+                            disabled={payingService === order.id}
+                            className="w-full"
+                          >
+                            {payingService === order.id ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Procesando...
+                              </>
+                            ) : (
+                              <>
+                                <CircleDollarSign className="h-4 w-4 mr-2" />
+                                Pagar ahora
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -919,6 +930,180 @@ export function TokensSection() {
           </div>
         </div>
       )}
+
+      {/* Service Detail Dialog */}
+      <Dialog open={!!selectedService} onOpenChange={(open) => !open && setSelectedService(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {selectedService && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-purple-600" />
+                  {selectedService.service?.display_name || 'Servicio Profesional'}
+                </DialogTitle>
+                <DialogDescription>
+                  Detalles de tu orden de servicio profesional
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 mt-4">
+                {/* Descripción */}
+                {selectedService.custom_description && (
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-foreground mb-2">Descripción</h4>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {selectedService.custom_description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Estados */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-semibold text-foreground">Estado de Pago</h4>
+                    </div>
+                    <span
+                      className={cn(
+                        'px-3 py-1 rounded-full text-sm font-medium border inline-flex items-center gap-1.5',
+                        selectedService.payment_status === 'pending' &&
+                          'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+                        selectedService.payment_status === 'paid' &&
+                          'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+                        selectedService.payment_status === 'cancelled' &&
+                          'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20'
+                      )}
+                    >
+                      {selectedService.payment_status === 'pending' && (
+                        <>
+                          <Clock className="h-3.5 w-3.5" />
+                          Pendiente
+                        </>
+                      )}
+                      {selectedService.payment_status === 'paid' && (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Pagado
+                        </>
+                      )}
+                      {selectedService.payment_status === 'cancelled' && (
+                        <>
+                          <XCircle className="h-3.5 w-3.5" />
+                          Cancelado
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-semibold text-foreground">Estado del Servicio</h4>
+                    </div>
+                    <span
+                      className={cn(
+                        'px-3 py-1 rounded-full text-sm font-medium border',
+                        selectedService.service_status === 'not_started' &&
+                          'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20',
+                        selectedService.service_status === 'in_progress' &&
+                          'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+                        selectedService.service_status === 'completed' &&
+                          'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+                        selectedService.service_status === 'on_hold' &&
+                          'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                      )}
+                    >
+                      {selectedService.service_status === 'not_started' && 'No iniciado'}
+                      {selectedService.service_status === 'in_progress' && 'En progreso'}
+                      {selectedService.service_status === 'completed' && 'Completado'}
+                      {selectedService.service_status === 'on_hold' && 'En espera'}
+                      {selectedService.service_status === 'cancelled' && 'Cancelado'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Precio */}
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-2 border-purple-500/30 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-foreground mb-3">Precio del Servicio</h4>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-purple-900 dark:text-purple-100">
+                      {formatCurrency(selectedService.price_cop)}
+                    </span>
+                    {selectedService.price_usd && (
+                      <span className="text-lg text-purple-700 dark:text-purple-300">
+                        ≈ ${selectedService.price_usd} USD
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Fechas */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Creado:
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {formatDate(selectedService.created_at)}
+                    </span>
+                  </div>
+                  {selectedService.paid_at && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Pagado:
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {formatDate(selectedService.paid_at)}
+                      </span>
+                    </div>
+                  )}
+                  {selectedService.updated_at && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Última actualización:
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {formatDate(selectedService.updated_at)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botón de pago si está pendiente */}
+                {selectedService.payment_status === 'pending' && (
+                  <div className="pt-4 border-t">
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={() => {
+                        setSelectedService(null)
+                        handlePayService(selectedService)
+                      }}
+                      disabled={payingService === selectedService.id}
+                    >
+                      {payingService === selectedService.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Procesando pago...
+                        </>
+                      ) : (
+                        <>
+                          <CircleDollarSign className="h-5 w-5 mr-2" />
+                          Proceder al pago
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

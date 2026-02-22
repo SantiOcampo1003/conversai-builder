@@ -54,7 +54,6 @@ interface FormState {
   // Paso 6 - Cierre
   requiredInfo: string[]
   warranty: string
-  email: string
   customInstructions: CustomInstruction[]
 }
 
@@ -99,7 +98,6 @@ interface FormActions {
   // Cierre
   setRequiredInfo: (v: string[]) => void
   setWarranty: (v: string) => void
-  setEmail: (v: string) => void
   setCustomInstructions: (v: CustomInstruction[]) => void
   addInstruction: () => void
   removeInstruction: (id: string) => void
@@ -132,7 +130,6 @@ const initialState: FormState = {
   formalityLevel: 'tu',
   requiredInfo: [],
   warranty: '',
-  email: '',
   customInstructions: [{ id: '1', text: '' }],
 }
 
@@ -197,7 +194,6 @@ export const useFormStore = create<FormState & FormActions>()(
       // Cierre
       setRequiredInfo: (v) => set({ requiredInfo: v }),
       setWarranty: (v) => set({ warranty: v }),
-      setEmail: (v) => set({ email: v }),
       setCustomInstructions: (v) => set({ customInstructions: v }),
       addInstruction: () => {
         const instructions = get().customInstructions

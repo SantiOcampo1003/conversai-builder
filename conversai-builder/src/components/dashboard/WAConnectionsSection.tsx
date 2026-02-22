@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { QRCodeSVG } from 'qrcode.react'
 import {
@@ -505,60 +506,54 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
 // ── Main Component ─────────────────────────────────────────────────────────
 export function WAConnectionsSection() {
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
   const [lines, setLines] = useState<WhatsAppLine[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
-  const [clientId, setClientId] = useState<string | null>(null)
   const [maxLines, setMaxLines] = useState(3)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!user) return
+    if (!user || !clientId || loadingClientId) return
 
     try {
       setLoading(true)
 
-      // Obtener client_id y rol del usuario
+      // Obtener rol del usuario (o admin si es super_admin impersonalizando)
       const { data: membership } = await supabase
         .from('client_members')
-        .select('client_id, role')
+        .select('role')
         .eq('auth_user_id', user.id)
         .eq('status', 'active')
-        .single()
+        .maybeSingle()
 
-      if (!membership) {
-        setLoading(false)
-        return
-      }
+      setIsAdmin(membership?.role === 'super_admin' || membership?.role === 'admin')
 
-      setClientId(membership.client_id)
-      setIsAdmin(membership.role === 'admin')
-
-      // Obtener límite de líneas
+      // Obtener límite de líneas usando clientId del hook
       const { data: clientData } = await supabase
         .from('clients')
         .select('max_whatsapp_lines')
-        .eq('id', membership.client_id)
+        .eq('id', clientId)
         .single()
 
       if (clientData) {
         setMaxLines(clientData.max_whatsapp_lines)
       }
 
-      // Obtener líneas
+      // Obtener líneas usando clientId del hook
       const { data: linesData } = await supabase
         .from('whatsapp_lines')
         .select('*')
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
         .order('created_at', { ascending: false })
 
       setLines(linesData || [])
 
-      // Obtener agentes
+      // Obtener agentes usando clientId del hook
       const { data: agentsData } = await supabase
         .from('agents')
         .select('agent_id, business_name')
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
         .order('business_name')
 
       setAgents(agentsData || [])
@@ -567,7 +562,7 @@ export function WAConnectionsSection() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user, clientId, loadingClientId])
 
   useEffect(() => {
     loadData()

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { MessageSquare, Loader2, Bot, User, Search, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,7 @@ const PAGE_SIZE = 50
 
 export function WAInteractionsSection() {
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
 
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState<string>('all')
@@ -49,29 +51,21 @@ export function WAInteractionsSection() {
 
   // 1. Cargar agentes del cliente
   useEffect(() => {
-    if (!user) return
+    if (!user || !clientId || loadingClientId) return
     const fetchAgents = async () => {
       setLoadingAgents(true)
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
-
-      if (!membership) { setLoadingAgents(false); return }
 
       const { data } = await supabase
         .from('agents')
         .select('agent_id, business_name')
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
         .order('created_at', { ascending: false })
 
       setAgents(data || [])
       setLoadingAgents(false)
     }
     fetchAgents()
-  }, [user])
+  }, [user, clientId, loadingClientId])
 
   const fetchConversations = useCallback(async () => {
     if (!user || loadingAgents) return

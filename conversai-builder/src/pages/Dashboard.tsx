@@ -14,6 +14,8 @@ import {
   BarChart3,
   Users,
   Shield,
+  AlertCircle,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentsSection } from '@/components/dashboard/AgentsSection'
@@ -27,6 +29,7 @@ import { SuperAdminSection } from '@/components/dashboard/SuperAdminSection'
 import { FeedbackDialog } from '@/components/FeedbackDialog'
 import { Button } from '@/components/ui/button'
 import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
+import { useClientContext } from '@/hooks/use-client-context'
 
 // ── Secciones del sidebar ──────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -74,14 +77,44 @@ export default function Dashboard() {
   const [feedbackExpanded, setFeedbackExpanded] = useState(true)
   const [feedbackHover, setFeedbackHover] = useState(false)
   const { isSuperAdmin, isLoading: loadingSuperAdmin } = useIsSuperAdmin()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
+  const [isImpersonating, setIsImpersonating] = useState(false)
+  const [impersonationData, setImpersonationData] = useState<any>(null)
+  const [impersonatedClientName, setImpersonatedClientName] = useState<string>('')
 
   // Determinar la sección activa desde la URL
   const activeSection = (section || 'overview') as SectionId
 
+  // Detectar si estamos impersonalizando
+  useEffect(() => {
+    const impersonation = sessionStorage.getItem('super_admin_impersonating')
+    if (impersonation) {
+      const data = JSON.parse(impersonation)
+      setIsImpersonating(true)
+      setImpersonationData(data)
+
+      // Cargar nombre del cliente impersonalizado
+      const loadClientName = async () => {
+        const { data: client } = await supabase
+          .from('clients')
+          .select('name, company_name')
+          .eq('id', data.targetClientId)
+          .single()
+
+        if (client) {
+          setImpersonatedClientName(client.company_name || client.name)
+        }
+      }
+      loadClientName()
+    }
+  }, [])
+
   // Cargar rol y permisos del usuario actual
   useEffect(() => {
-    if (!user) return
+    if (!user || loadingClientId) return
+
     const loadPermissions = async () => {
+      // Obtener membresía del usuario autenticado
       const { data: membership } = await supabase
         .from('client_members')
         .select('id, role')
@@ -94,10 +127,55 @@ export default function Dashboard() {
         return
       }
 
-      setUserRole(membership.role)
+      // Si es super_admin, darle acceso completo (incluso cuando impersonaliza)
+      if (membership.role === 'super_admin') {
+        setUserRole('admin') // Mostrar como admin en la UI
+        setAllowedSections(new Set(NAV_ITEMS.map(i => i.id)))
+        return
+      }
 
-      // Admin y super_admin siempre tienen acceso a todo
-      if (membership.role === 'admin' || membership.role === 'super_admin') {
+      // Si hay clientId y NO es super admin, verificar membresía en el cliente actual
+      if (clientId) {
+        const { data: clientMembership } = await supabase
+          .from('client_members')
+          .select('id, role')
+          .eq('client_id', clientId)
+          .eq('auth_user_id', user.id)
+          .eq('status', 'active')
+          .single()
+
+        if (clientMembership) {
+          setUserRole(clientMembership.role)
+
+          // Admin tiene acceso a todo
+          if (clientMembership.role === 'admin') {
+            setAllowedSections(new Set(NAV_ITEMS.map(i => i.id)))
+            return
+          }
+
+          // Cargar permisos desde member_permissions
+          const { data: perms } = await supabase
+            .from('member_permissions')
+            .select('section, permissions')
+            .eq('member_id', clientMembership.id)
+
+          // Solo mostrar secciones donde tiene al menos 'view'
+          const allowed = new Set<string>()
+          for (const p of perms || []) {
+            if (Array.isArray(p.permissions) && p.permissions.includes('view')) {
+              allowed.add(p.section)
+            }
+          }
+          // 'account' siempre visible para que pueda ver sus propios datos
+          allowed.add('account')
+          setAllowedSections(allowed)
+          return
+        }
+      }
+
+      // Fallback: usar la membresía original
+      setUserRole(membership.role)
+      if (membership.role === 'admin') {
         setAllowedSections(new Set(NAV_ITEMS.map(i => i.id)))
         return
       }
@@ -108,42 +186,25 @@ export default function Dashboard() {
         .select('section, permissions')
         .eq('member_id', membership.id)
 
-      // Solo mostrar secciones donde tiene al menos 'view'
       const allowed = new Set<string>()
       for (const p of perms || []) {
         if (Array.isArray(p.permissions) && p.permissions.includes('view')) {
           allowed.add(p.section)
         }
       }
-      // 'account' siempre visible para que pueda ver sus propios datos
       allowed.add('account')
       setAllowedSections(allowed)
     }
 
     const loadTokens = async () => {
+      if (!clientId || loadingClientId) return
+
       try {
-        const { data: membership, error: memberError } = await supabase
-          .from('client_members')
-          .select('client_id')
-          .eq('auth_user_id', user.id)
-          .eq('status', 'active')
-          .single()
-
-        if (memberError) {
-          console.error('Error loading membership:', memberError)
-          return
-        }
-
-        if (!membership) {
-          console.warn('No membership found for user')
-          return
-        }
-
         // Obtener información del cliente
         const { data: client, error: clientError } = await supabase
           .from('clients')
           .select('company_name, name')
-          .eq('id', membership.client_id)
+          .eq('id', clientId)
           .single()
 
         if (!clientError && client) {
@@ -153,7 +214,7 @@ export default function Dashboard() {
         const { data: balance, error: balanceError } = await supabase
           .from('token_balances')
           .select('available_tokens')
-          .eq('client_id', membership.client_id)
+          .eq('client_id', clientId)
           .single()
 
         if (balanceError) {
@@ -171,7 +232,7 @@ export default function Dashboard() {
 
     loadPermissions()
     loadTokens()
-  }, [user])
+  }, [user, clientId, loadingClientId])
 
   // Redirigir si la sección actual no está permitida
   useEffect(() => {
@@ -212,6 +273,13 @@ export default function Dashboard() {
       clearInterval(expandInterval)
     }
   }, []) // Solo al montar el componente
+
+  const handleExitImpersonation = () => {
+    sessionStorage.removeItem('super_admin_impersonating')
+    // Disparar evento para que otros componentes se enteren
+    window.dispatchEvent(new Event('impersonation-changed'))
+    window.location.href = '/dashboard/super-admin'
+  }
 
   const handleSignOut = async () => {
     await signOut()
@@ -346,6 +414,32 @@ export default function Dashboard() {
             </div>
           </div>
         </header>
+
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="bg-amber-500 text-white px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5" />
+              <div>
+                <p className="font-semibold">
+                  Modo Super Admin: Accediendo como {impersonatedClientName || 'Cliente'}
+                </p>
+                <p className="text-xs opacity-90">
+                  Estás viendo el dashboard del cliente. Puedes realizar configuraciones en su nombre.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={handleExitImpersonation}
+              variant="secondary"
+              size="sm"
+              className="gap-2 bg-white text-amber-600 hover:bg-amber-50"
+            >
+              <Shield className="h-4 w-4" />
+              Volver a Super Admin
+            </Button>
+          </div>
+        )}
 
         {/* Content */}
         <main className={cn(

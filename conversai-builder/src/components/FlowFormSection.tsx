@@ -61,7 +61,6 @@ export const FlowFormSection = () => {
     formalityLevel, setFormalityLevel,
     requiredInfo, setRequiredInfo,
     warranty, setWarranty,
-    email, setEmail,
     customInstructions, addInstruction, removeInstruction, updateInstruction,
     resetForm,
   } = useFormStore();
@@ -193,7 +192,7 @@ export const FlowFormSection = () => {
           .from('clients')
           .insert({
             name: businessName,
-            email,
+            email: user.email,
             company_name: businessName,
             auth_user_id: user.id,
           })
@@ -214,7 +213,7 @@ export const FlowFormSection = () => {
         .from('agents')
         .insert({
           agent_id: agentId,
-          email,
+          email: user.email,
           business_name: businessName,
           business_type: businessType,
           business_category: businessCategory,
@@ -1229,34 +1228,6 @@ export const FlowFormSection = () => {
                     </Button>
                   </motion.div>
                 </div>
-              </div>
-
-              <div className="pt-4 border-t border-border">
-                <motion.div whileHover={{ scale: 1.01 }}>
-                  <Label htmlFor="email" className="text-sm font-medium mb-2 block flex items-center gap-2">
-                    Email para notificaciones *
-                    {email && (
-                      <motion.span
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      </motion.span>
-                    )}
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
-                    className="bg-secondary/50 border-border h-11 border-2 focus:border-primary transition-all"
-                    required
-                  />
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Te enviaremos el link de tu agente y actualizaciones
-                  </p>
-                </motion.div>
               </div>
             </div>
           </motion.div>

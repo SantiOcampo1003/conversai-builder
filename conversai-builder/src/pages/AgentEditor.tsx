@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
@@ -95,6 +96,7 @@ export default function AgentEditor() {
   const { agentId } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
 
   const [agent, setAgent]           = useState<Agent | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -105,31 +107,22 @@ export default function AgentEditor() {
 
   // ── Load agent ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user || !agentId) return
+    if (!user || !agentId || !clientId || loadingClientId) return
     const load = async () => {
       setLoading(true)
-      // Verify ownership via client_members
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
-
-      if (!membership) { setLoading(false); return }
 
       const { data } = await supabase
         .from('agents')
         .select('*')
         .eq('agent_id', agentId)
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
         .single()
 
       setAgent(data || null)
       setLoading(false)
     }
     load()
-  }, [user, agentId])
+  }, [user, agentId, clientId, loadingClientId])
 
   // ── Save helper ───────────────────────────────────────────────────────────────
   const save = async (patch: Partial<Agent>) => {

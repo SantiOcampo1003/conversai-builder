@@ -58,6 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    // Limpiar sessionStorage antes de cerrar sesión
+    sessionStorage.removeItem('super_admin_impersonating')
+
+    // Cerrar sesión en Supabase
     await supabase.auth.signOut()
   }
 

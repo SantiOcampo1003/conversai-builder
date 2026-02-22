@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2, MessageSquare } from "lucide-react";
+import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2, MessageSquare, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -418,6 +418,10 @@ export const WhatsAppSimulator = ({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate('/dashboard/agents')}>
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Volver al Dashboard
+                  </DropdownMenuItem>
                   <FeedbackDialog
                     trigger={
                       <DropdownMenuItem onSelect={(e) => e.preventDefault()}>

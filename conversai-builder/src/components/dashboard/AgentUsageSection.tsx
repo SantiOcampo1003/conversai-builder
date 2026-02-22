@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -114,45 +115,36 @@ const DATE_PRESETS = [
 // ── Main Component ─────────────────────────────────────────────────────────
 export function AgentUsageSection() {
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
 
   const [selectedAgent, setSelectedAgent] = useState<string>('all')
   const [datePreset, setDatePreset] = useState<DateRangePreset>('this_month')
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromPreset('this_month'))
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(getDateRangeFromPreset('this_month'))
 
-  // Query para obtener client_id y agentes
+  // Query para obtener agentes del cliente
   const { data: clientData } = useQuery({
-    queryKey: ['client-agents', user?.id],
+    queryKey: ['client-agents', clientId],
     queryFn: async () => {
-      if (!user) return null
-
-      const { data: membership } = await supabase
-        .from('client_members')
-        .select('client_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .single()
-
-      if (!membership) return null
+      if (!clientId) return null
 
       const { data: agents } = await supabase
         .from('agents')
         .select('agent_id, business_name')
-        .eq('client_id', membership.client_id)
+        .eq('client_id', clientId)
         .order('business_name')
 
       return {
-        clientId: membership.client_id,
+        clientId: clientId,
         agents: agents || [],
       }
     },
-    enabled: !!user,
+    enabled: !!clientId && !loadingClientId,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })
 
-  const clientId = clientData?.clientId
   const agents = clientData?.agents || []
 
   // Query para métricas con React Query

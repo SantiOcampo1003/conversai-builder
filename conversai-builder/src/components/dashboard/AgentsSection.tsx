@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
 import { Bot, MessageSquare, Calendar, Tag, Plus, Loader2, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -45,37 +46,25 @@ const CATEGORY_EMOJI: Record<string, string> = {
 
 export function AgentsSection() {
   const { user } = useAuth()
+  const { clientId, isLoading: loadingClientId } = useClientContext()
   const navigate = useNavigate()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !clientId || loadingClientId) return
 
     const fetchAgents = async () => {
       setLoading(true)
       setError(null)
 
       try {
-        // 1. Obtener el client_id del usuario
-        const { data: membership, error: memberError } = await supabase
-          .from('client_members')
-          .select('client_id')
-          .eq('auth_user_id', user.id)
-          .eq('status', 'active')
-          .single()
-
-        if (memberError || !membership) {
-          setAgents([])
-          return
-        }
-
-        // 2. Traer los agentes de ese cliente
+        // Traer los agentes del cliente (usando clientId del contexto, que puede ser impersonalizado)
         const { data: agentsData, error: agentsError } = await supabase
           .from('agents')
           .select('id, agent_id, business_name, business_category, business_type, created_at')
-          .eq('client_id', membership.client_id)
+          .eq('client_id', clientId)
           .order('created_at', { ascending: false })
 
         if (agentsError) {
@@ -92,7 +81,7 @@ export function AgentsSection() {
     }
 
     fetchAgents()
-  }, [user])
+  }, [user, clientId, loadingClientId])
 
   if (loading) {
     return (
