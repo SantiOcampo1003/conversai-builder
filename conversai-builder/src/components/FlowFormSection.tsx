@@ -120,7 +120,7 @@ export const FlowFormSection = () => {
       case 5:
         return true;
       case 6:
-        return email;
+        return true; // El paso 6 tiene campos opcionales solamente
       default:
         return false;
     }
