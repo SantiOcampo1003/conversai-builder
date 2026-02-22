@@ -1,6 +1,6 @@
 import { CheckCircle, AlertTriangle, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-
+ 
 export const ValuePropositionSection = () => {
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-darker-surface">
