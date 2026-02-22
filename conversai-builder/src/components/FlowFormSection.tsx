@@ -25,6 +25,21 @@ const STEPS = [
   { id: 6, title: "Finalizar", icon: CheckCircle2, description: "Email y extras" }
 ];
 
+// ── Currency Formatting Helpers ────────────────────────────────────────────
+const formatCurrency = (value: string): string => {
+  // Eliminar todo excepto números
+  const numbers = value.replace(/\D/g, '');
+  if (!numbers) return '';
+
+  // Formatear con puntos de miles
+  return new Intl.NumberFormat('es-CO').format(parseInt(numbers));
+};
+
+const parseCurrency = (formattedValue: string): string => {
+  // Extraer solo números para guardar en el estado
+  return formattedValue.replace(/\D/g, '');
+};
+
 export const FlowFormSection = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -174,18 +189,19 @@ export const FlowFormSection = () => {
         .substring(0, 30);
       const agentId = `agent_${slug}_${Date.now()}`;
 
-      // 1. Buscar si el usuario ya tiene un cliente
+      // 1. Buscar si el usuario ya tiene un cliente (a través de client_members)
       let clientId: string;
 
-      const { data: existingClient } = await supabase
-        .from('clients')
-        .select('id')
+      const { data: membership } = await supabase
+        .from('client_members')
+        .select('client_id')
         .eq('auth_user_id', user.id)
-        .single();
+        .eq('status', 'active')
+        .maybeSingle();
 
-      if (existingClient) {
+      if (membership) {
         // Reusar el cliente existente
-        clientId = existingClient.id;
+        clientId = membership.client_id;
       } else {
         // Crear un nuevo cliente
         const { data: clientData, error: clientError } = await supabase
@@ -504,16 +520,16 @@ export const FlowFormSection = () => {
                 </Label>
                 <div className="flex gap-2">
                   <Input
-                    type="number"
-                    value={priceFrom}
-                    onChange={(e) => setPriceFrom(e.target.value)}
+                    type="text"
+                    value={formatCurrency(priceFrom)}
+                    onChange={(e) => setPriceFrom(parseCurrency(e.target.value))}
                     placeholder="Desde"
                     className="bg-secondary/50 h-11 border-2"
                   />
                   <Input
-                    type="number"
-                    value={priceTo}
-                    onChange={(e) => setPriceTo(e.target.value)}
+                    type="text"
+                    value={formatCurrency(priceTo)}
+                    onChange={(e) => setPriceTo(parseCurrency(e.target.value))}
                     placeholder="Hasta"
                     className="bg-secondary/50 h-11 border-2"
                   />
@@ -593,10 +609,10 @@ export const FlowFormSection = () => {
                               Precio
                             </Label>
                             <Input
-                              type="number"
-                              value={product.price}
-                              onChange={(e) => updateProduct(product.id, "price", e.target.value)}
-                              placeholder="25000"
+                              type="text"
+                              value={formatCurrency(product.price)}
+                              onChange={(e) => updateProduct(product.id, "price", parseCurrency(e.target.value))}
+                              placeholder="25.000"
                               className="bg-background/50 border-2"
                             />
                           </div>
