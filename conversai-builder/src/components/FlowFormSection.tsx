@@ -11,18 +11,10 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Plus, Trash2, Bot, MessageSquare, Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2, Zap, ArrowRight, ArrowLeft, Check, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Confetti from "react-confetti";
-
-interface Product {
-  id: string;
-  name: string;
-  price: string;
-}
-
-interface FAQ {
-  id: string;
-  question: string;
-  answer: string;
-}
+import { useAuth } from "@/context/AuthContext";
+import { AuthModal } from "@/components/AuthModal";
+import { useFormStore } from "@/stores/useFormStore";
+import { supabase } from "@/lib/supabase";
 
 const STEPS = [
   { id: 1, title: "Negocio", icon: Store, description: "Información básica" },
@@ -35,58 +27,43 @@ const STEPS = [
 
 export const FlowFormSection = () => {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1);
+  const { user } = useAuth();
+
+  // Estados de UI — no persisten, se resetean al recargar
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
-  
-  // Información del negocio
-  const [businessName, setBusinessName] = useState("");
-  const [businessType, setBusinessType] = useState("products");
-  const [businessCategory, setBusinessCategory] = useState("");
-  const [priceFrom, setPriceFrom] = useState("");
-  const [priceTo, setPriceTo] = useState("");
-  const [currency, setCurrency] = useState("COP");
-  
-  // Productos/Servicios
-  const [products, setProducts] = useState<Product[]>([
-    { id: "1", name: "", price: "" }
-  ]);
-  
-  // Envío y pago
-  const [offersDelivery, setOffersDelivery] = useState(false);
-  const [deliveryCost, setDeliveryCost] = useState("");
-  const [deliveryTime, setDeliveryTime] = useState("");
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  
-  // FAQ y objeciones
-  const [faqs, setFaqs] = useState<FAQ[]>([
-    { id: "1", question: "", answer: "" }
-  ]);
-  const [commonObjection, setCommonObjection] = useState("");
-  const [objectionResponse, setObjectionResponse] = useState("");
-  
-  // Tono y personalidad
-  const [tone, setTone] = useState("friendly");
-  const [useEmojis, setUseEmojis] = useState(true);
-  const [formalityLevel, setFormalityLevel] = useState("tu");
-  
-  // Cierre
-  const [requiredInfo, setRequiredInfo] = useState<string[]>([]);
-  const [warranty, setWarranty] = useState("");
-  
-  const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
-  
-  // Pasarela de pago
-  const [paymentGateway, setPaymentGateway] = useState("none");
-  const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
-  
-  // Instrucciones personalizadas
-  const [customInstructions, setCustomInstructions] = useState<{id: string, text: string}[]>([
-    { id: "1", text: "" }
-  ]);
+  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+
+  // Estado del formulario — persiste en localStorage via Zustand
+  const {
+    currentStep, setCurrentStep,
+    businessName, setBusinessName,
+    businessType, setBusinessType,
+    businessCategory, setBusinessCategory,
+    priceFrom, setPriceFrom,
+    priceTo, setPriceTo,
+    currency, setCurrency,
+    products, addProduct, removeProduct, updateProduct,
+    offersDelivery, setOffersDelivery,
+    deliveryCost, setDeliveryCost,
+    deliveryTime, setDeliveryTime,
+    paymentMethods, setPaymentMethods,
+    paymentGateway, setPaymentGateway,
+    paymentLinks, setPaymentLinks,
+    faqs, addFaq, removeFaq, updateFaq,
+    commonObjection, setCommonObjection,
+    objectionResponse, setObjectionResponse,
+    tone, setTone,
+    useEmojis, setUseEmojis,
+    formalityLevel, setFormalityLevel,
+    requiredInfo, setRequiredInfo,
+    warranty, setWarranty,
+    customInstructions, addInstruction, removeInstruction, updateInstruction,
+    resetForm,
+  } = useFormStore();
 
   useEffect(() => {
     const handleResize = () => {
@@ -97,81 +74,37 @@ export const FlowFormSection = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Funciones para manejar productos
-  const addProduct = () => {
-    const newId = (products.length + 1).toString();
-    setProducts([...products, { id: newId, name: "", price: "" }]);
-  };
-
-  const removeProduct = (id: string) => {
-    if (products.length > 1) {
-      setProducts(products.filter(p => p.id !== id));
+  // Al volver del redirect de Google OAuth, hacer scroll al formulario
+  useEffect(() => {
+    if (user && localStorage.getItem('auth_intent') === 'scroll-to-form') {
+      localStorage.removeItem('auth_intent');
+      setTimeout(() => {
+        document.getElementById('flow-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
     }
-  };
+  }, [user]);
 
-  // Funciones para manejar instrucciones
-  const addInstruction = () => {
-    const newId = (customInstructions.length + 1).toString();
-    setCustomInstructions([...customInstructions, { id: newId, text: "" }]);
-  };
-
-  const removeInstruction = (id: string) => {
-    if (customInstructions.length > 1) {
-      setCustomInstructions(customInstructions.filter(i => i.id !== id));
-    }
-  };
-
-  const updateInstruction = (id: string, text: string) => {
-    setCustomInstructions(customInstructions.map(i => 
-      i.id === id ? { ...i, text } : i
-    ));
-  };
-
-  const updateProduct = (id: string, field: keyof Product, value: string) => {
-    setProducts(products.map(p => 
-      p.id === id ? { ...p, [field]: value } : p
-    ));
-  };
-
-  // Funciones para manejar FAQs
-  const addFaq = () => {
-    const newId = (faqs.length + 1).toString();
-    setFaqs([...faqs, { id: newId, question: "", answer: "" }]);
-  };
-
-  const removeFaq = (id: string) => {
-    if (faqs.length > 1) {
-      setFaqs(faqs.filter(f => f.id !== id));
-    }
-  };
-
-  const updateFaq = (id: string, field: keyof FAQ, value: string) => {
-    setFaqs(faqs.map(f => 
-      f.id === id ? { ...f, [field]: value} : f
-    ));
-  };
+  // Nota: addProduct, removeProduct, updateProduct, addFaq, removeFaq, updateFaq,
+  // addInstruction, removeInstruction, updateInstruction vienen del store.
 
   const togglePaymentMethod = (method: string) => {
-    setPaymentMethods(prev => 
-      prev.includes(method) 
-        ? prev.filter(m => m !== method)
-        : [...prev, method]
+    setPaymentMethods(
+      paymentMethods.includes(method)
+        ? paymentMethods.filter(m => m !== method)
+        : [...paymentMethods, method]
     );
   };
 
   const toggleRequiredInfo = (info: string) => {
-    setRequiredInfo(prev => 
-      prev.includes(info) 
-        ? prev.filter(i => i !== info)
-        : [...prev, info]
+    setRequiredInfo(
+      requiredInfo.includes(info)
+        ? requiredInfo.filter(i => i !== info)
+        : [...requiredInfo, info]
     );
   };
 
   const updatePaymentLink = (productName: string, link: string) => {
-    setPaymentLinks(prev => ({
-      ...prev,
-      [productName]: link
-    }));
+    setPaymentLinks({ ...paymentLinks, [productName]: link });
   };
 
   const canProceedToNextStep = () => {
@@ -195,6 +128,11 @@ export const FlowFormSection = () => {
 
   const handleNext = () => {
     if (currentStep < 6) {
+      // Al avanzar del paso 2, verificar autenticación
+      if (currentStep === 2 && !user) {
+        setShowAuthModal(true);
+        return;
+      }
       // Confetti en pasos clave
       if (currentStep === 2 || currentStep === 5) {
         setShowConfetti(true);
@@ -202,6 +140,14 @@ export const FlowFormSection = () => {
       }
       setCurrentStep(currentStep + 1);
     }
+  };
+
+  const handleAuthSuccess = () => {
+    setShowAuthModal(false);
+    // Avanzar al paso 3 con confetti
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 2000);
+    setCurrentStep(3);
   };
 
   const handleBack = () => {
@@ -212,60 +158,122 @@ export const FlowFormSection = () => {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    
+
     try {
-      const response = await fetch('https://easy-agents-n8n.ftppdk.easypanel.host/webhook/flow-submission', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          businessName,
-          businessType,
-          businessCategory,
-          priceRange: { from: priceFrom, to: priceTo, currency },
+      if (!user) {
+        alert('Debes iniciar sesión para crear un agente.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Generar agent_id único basado en el nombre del negocio + timestamp
+      const slug = businessName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .substring(0, 30);
+      const agentId = `agent_${slug}_${Date.now()}`;
+
+      // 1. Buscar si el usuario ya tiene un cliente
+      let clientId: string;
+
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (existingClient) {
+        // Reusar el cliente existente
+        clientId = existingClient.id;
+      } else {
+        // Crear un nuevo cliente
+        const { data: clientData, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            name: businessName,
+            email: user.email,
+            company_name: businessName,
+            auth_user_id: user.id,
+          })
+          .select('id')
+          .single();
+
+        if (clientError) {
+          console.error('Error creando cliente:', clientError);
+          alert(`Error al crear el cliente: ${clientError.message}`);
+          return;
+        }
+
+        clientId = clientData.id;
+      }
+
+      // 2. Crear el agente vinculado al cliente
+      const { error: agentError } = await supabase
+        .from('agents')
+        .insert({
+          agent_id: agentId,
+          email: user.email,
+          business_name: businessName,
+          business_type: businessType,
+          business_category: businessCategory,
+          client_id: clientId,
+          price_range: { from: priceFrom, to: priceTo, currency },
           products: products.filter(p => p.name && p.price),
           delivery: {
             offers: offersDelivery,
             cost: deliveryCost,
-            time: deliveryTime
+            time: deliveryTime,
           },
-          paymentMethods,
+          payment_methods: paymentMethods,
           faqs: faqs.filter(f => f.question && f.answer),
-          objectionHandling: {
+          objection_handling: {
             common: commonObjection,
-            response: objectionResponse
+            response: objectionResponse,
           },
-          agentPersonality: {
+          agent_personality: {
             tone,
             useEmojis,
-            formalityLevel
+            formalityLevel,
           },
-          requiredInfo,
+          required_info: requiredInfo,
           warranty,
-          paymentGateway,
-          paymentLinks: paymentGateway !== 'none' ? paymentLinks : {},
-          customInstructions: customInstructions
+          payment_gateway: paymentGateway,
+          payment_links: paymentGateway !== 'none' ? paymentLinks : {},
+          custom_instructions: customInstructions
             .filter(i => i.text.trim())
             .map((i, index) => `${index + 1}. ${i.text}`)
             .join('\n'),
-      email
-        }),
-      });
+        });
 
-      const data = await response.json();
-      const agentId = data.agent_id || data.agentId;
-      
-      if (agentId) {
-        localStorage.setItem('currentAgentId', agentId);
-        setCreatedAgentId(agentId);
-        setShowConfetti(true);
-        setTimeout(() => {
-          setSubmitted(true);
-        }, 500);
-      } else {
-        alert('Error al enviar el flujo: No se recibió agentId');
+      if (agentError) {
+        console.error('Error creando agente:', agentError);
+        alert(`Error al crear el agente: ${agentError.message}`);
+        return;
       }
+
+      // 3. Vincular el usuario autenticado como admin del cliente
+      const { error: memberError } = await supabase
+        .from('client_members')
+        .insert({
+          client_id: clientId,
+          auth_user_id: user.id,
+          role: 'admin',
+          status: 'active',
+        });
+
+      if (memberError && memberError.code !== '23505') {
+        // 23505 = unique_violation (ya era miembro), no es error crítico
+        console.error('Error vinculando miembro:', memberError);
+      }
+
+      localStorage.setItem('currentAgentId', agentId);
+      setCreatedAgentId(agentId);
+      setShowConfetti(true);
+      resetForm();
+      setTimeout(() => {
+        setSubmitted(true);
+      }, 500);
     } catch (error) {
       console.error('Error al enviar:', error);
       alert('Error al enviar el flujo. Por favor intenta de nuevo.');
@@ -1221,34 +1229,6 @@ export const FlowFormSection = () => {
                   </motion.div>
                 </div>
               </div>
-
-              <div className="pt-4 border-t border-border">
-                <motion.div whileHover={{ scale: 1.01 }}>
-                  <Label htmlFor="email" className="text-sm font-medium mb-2 block flex items-center gap-2">
-                    Email para notificaciones *
-                    {email && (
-                      <motion.span
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      </motion.span>
-                    )}
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
-                    className="bg-secondary/50 border-border h-11 border-2 focus:border-primary transition-all"
-                    required
-                  />
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Te enviaremos el link de tu agente y actualizaciones
-                  </p>
-                </motion.div>
-              </div>
             </div>
           </motion.div>
         );
@@ -1261,6 +1241,7 @@ export const FlowFormSection = () => {
   return (
     <section className="py-12 px-4 sm:px-6 lg:px-8 min-h-screen relative overflow-hidden">
       {showConfetti && <Confetti width={windowSize.width} height={windowSize.height} recycle={false} numberOfPieces={200} />}
+      <AuthModal open={showAuthModal} onSuccess={handleAuthSuccess} />
       
       {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10 -z-10"></div>

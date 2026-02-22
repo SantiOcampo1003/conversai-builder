@@ -1,0 +1,1 @@
+SELECT agent_id FROM whatsapp_lines WHERE evolution_instance_name = line_1771540187683_upr5q6ryj

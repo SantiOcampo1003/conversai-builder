@@ -7,6 +7,7 @@ package-lock.json
 
 # Environment variables
 .env
+.env.production
 .env.local
 
 # Logs
@@ -27,3 +28,9 @@ Thumbs.db
 dist/
 build/
 
+# Supabase
+supabase/.branches
+supabase/.temp
+supabase/functions/.env
+
+conversai-builder/.env.production
