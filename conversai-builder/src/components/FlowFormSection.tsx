@@ -203,25 +203,12 @@ export const FlowFormSection = () => {
         // Reusar el cliente existente
         clientId = membership.client_id;
       } else {
-        // Crear un nuevo cliente
-        const { data: clientData, error: clientError } = await supabase
-          .from('clients')
-          .insert({
-            name: businessName,
-            email: user.email,
-            company_name: businessName,
-            auth_user_id: user.id,
-          })
-          .select('id')
-          .single();
-
-        if (clientError) {
-          console.error('Error creando cliente:', clientError);
-          alert(`Error al crear el cliente: ${clientError.message}`);
-          return;
-        }
-
-        clientId = clientData.id;
+        // Si el usuario no tiene membresía, es un error de datos
+        // El trigger handle_new_user() debería haber creado el cliente al registrarse
+        console.error('Usuario sin cliente asociado:', user.id, user.email);
+        alert('Error: No se encontró tu cuenta de cliente. Por favor contacta a soporte.');
+        setIsSubmitting(false);
+        return;
       }
 
       // 2. Crear el agente vinculado al cliente
@@ -268,20 +255,8 @@ export const FlowFormSection = () => {
         return;
       }
 
-      // 3. Vincular el usuario autenticado como admin del cliente
-      const { error: memberError } = await supabase
-        .from('client_members')
-        .insert({
-          client_id: clientId,
-          auth_user_id: user.id,
-          role: 'admin',
-          status: 'active',
-        });
-
-      if (memberError && memberError.code !== '23505') {
-        // 23505 = unique_violation (ya era miembro), no es error crítico
-        console.error('Error vinculando miembro:', memberError);
-      }
+      // La membresía ya fue creada por el trigger handle_new_user() al registrarse
+      // No es necesario crearla de nuevo
 
       localStorage.setItem('currentAgentId', agentId);
       setCreatedAgentId(agentId);
