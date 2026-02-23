@@ -168,3 +168,4 @@ npm run dev
 # 4. (Opcional) Exponer DB para N8N
 ngrok tcp 54322
 ```
+v1
