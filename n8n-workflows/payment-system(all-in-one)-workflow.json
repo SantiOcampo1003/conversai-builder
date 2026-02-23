@@ -1,0 +1,775 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-payment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        480
+      ],
+      "id": "a4065d33-6281-47aa-af11-9b087a6f9d24",
+      "name": "Webhook",
+      "webhookId": "a95bdad2-2dc0-427f-b062-d67443855b6f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.body.action !== 'retry' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        480
+      ],
+      "id": "4c81f297-fca4-4721-9c2c-f8dff627e4d6",
+      "name": "Create or Retry?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "token",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        288
+      ],
+      "id": "af66a0c2-6e72-4ddf-8633-5c4c9fbc235d",
+      "name": "Create Token or Service?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.body.transactionId !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        688
+      ],
+      "id": "be7adddd-f8df-4a45-abc5-aabd06a35f40",
+      "name": "Retry Token or Service?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, email FROM clients WHERE id = '{{ $('Webhook').item.json.body.clientId }}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        816,
+        80
+      ],
+      "id": "da5d9bcc-30e0-408d-be72-2a46516af4eb",
+      "name": "Get Client (Token)",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, display_name, tokens, price_cop FROM token_packages WHERE id = '{{ $('Webhook').item.json.body.packageId }}' AND active = true",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1024,
+        80
+      ],
+      "id": "f451dda3-cbcd-4103-b35e-f9d13de6e20f",
+      "name": "Get Package",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mercadopago.com/checkout/preferences",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"items\": [\n    {\n      \"id\": \"{{ $('Get Package').item.json.id }}\",\n      \"title\": \"Paquete de Tokens - {{ $('Get Package').item.json.display_name }}\",\n      \"quantity\": 1,\n      \"unit_price\": {{ $('Get Package').item.json.price_cop }},\n      \"currency_id\": \"COP\",\n      \"description\": \"{{ $('Get Package').item.json.tokens }} tokens para tus agentes de IA\"\n    }\n  ],\n  \"payer\": {\n    \"email\": \"{{ $('Get Client (Token)').item.json.email }}\",\n    \"name\": \"{{ $('Get Client (Token)').item.json.name }}\"\n  },\n  \"back_urls\": {\n    \"success\": \"https://www.easyagent.space/payment/success\",\n    \"failure\": \"https://www.easyagent.space/payment/failure\",\n    \"pending\": \"https://www.easyagent.space/payment/pending\"\n  },\n  \"auto_return\": \"approved\",\n  \"notification_url\": \"https://easy-agents-n8n.ftppdk.easypanel.host/webhook/mercadopago-ipn\",\n  \"external_reference\": \"{{ $('Get Client (Token)').item.json.id }}|{{ $('Get Package').item.json.id }}\",\n  \"metadata\": {\n    \"type\": \"token\",\n    \"client_id\": \"{{ $('Get Client (Token)').item.json.id }}\",\n    \"package_id\": \"{{ $('Get Package').item.json.id }}\",\n    \"tokens\": {{ $('Get Package').item.json.tokens }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        80
+      ],
+      "id": "474015f3-d31a-4512-9027-5e523be579ba",
+      "name": "Create Preference (Token)",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZrFL5r1CEQJ8qTzR",
+          "name": "MercadoPago-PROD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO token_transactions (\n  client_id,\n  package_id,\n  type,\n  tokens,\n  amount_cop,\n  payment_status,\n  mercadopago_preference_id,\n  payment_link,\n  payment_expires_at,\n  description\n)\nVALUES (\n  '{{ $('Get Client (Token)').item.json.id }}',\n  '{{ $('Get Package').item.json.id }}',\n  'purchase',\n  {{ $('Get Package').item.json.tokens }},\n  {{ $('Get Package').item.json.price_cop }},\n  'pending',\n  '{{ $('Create Preference (Token)').item.json.id }}',\n  '{{ $('Create Preference (Token)').item.json.init_point }}',\n  NOW() + INTERVAL '1 hour',\n  'Compra paquete {{ $('Get Package').item.json.display_name }}'\n)\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1424,
+        80
+      ],
+      "id": "fe5f653c-a292-432a-8e4e-c77795cc5b35",
+      "name": "Insert Token Transaction",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  so.id,\n  so.client_id,\n  so.service_id,\n  so.price_cop,\n  so.price_usd,\n  so.custom_description,\n  c.name as client_name,\n  c.email as client_email,\n  s.display_name as service_name,\n  s.description as service_description\nFROM service_orders so\nJOIN clients c ON so.client_id = c.id\nJOIN services s ON so.service_id = s.id\nWHERE so.id = '{{ $('Webhook').item.json.body.serviceOrderId }}'\n  AND so.payment_status = 'pending'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        816,
+        384
+      ],
+      "id": "f41f6147-0031-4c24-8109-af9cf52196c4",
+      "name": "Get Service Order (Create)",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mercadopago.com/checkout/preferences",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"items\": [\n    {\n      \"id\": \"{{ $('Get Service Order (Create)').item.json[0].service_id }}\",\n      \"title\": \"Servicio Profesional - {{ $('Get Service Order (Create)').item.json[0].service_name }}\",\n      \"quantity\": 1,\n      \"unit_price\": {{ $('Get Service Order (Create)').item.json[0].price_cop }},\n      \"currency_id\": \"COP\",\n      \"description\": \"{{ $('Get Service Order (Create)').item.json[0].custom_description || $('Get Service Order (Create)').item.json[0].service_description }}\"\n    }\n  ],\n  \"payer\": {\n    \"email\": \"{{ $('Get Service Order (Create)').item.json[0].client_email }}\",\n    \"name\": \"{{ $('Get Service Order (Create)').item.json[0].client_name }}\"\n  },\n  \"back_urls\": {\n    \"success\": \"https://www.easyagent.space/payment/success\",\n    \"failure\": \"https://www.easyagent.space/payment/failure\",\n    \"pending\": \"https://www.easyagent.space/payment/pending\"\n  },\n  \"auto_return\": \"approved\",\n  \"notification_url\": \"https://easy-agents-n8n.ftppdk.easypanel.host/webhook/mercadopago-ipn\",\n  \"external_reference\": \"{{ $('Get Service Order (Create)').item.json[0].client_id }}|{{ $('Get Service Order (Create)').item.json[0].service_id }}|{{ $('Get Service Order (Create)').item.json[0].id }}\",\n  \"metadata\": {\n    \"type\": \"service\",\n    \"client_id\": \"{{ $('Get Service Order (Create)').item.json[0].client_id }}\",\n    \"service_id\": \"{{ $('Get Service Order (Create)').item.json[0].service_id }}\",\n    \"service_order_id\": \"{{ $('Get Service Order (Create)').item.json[0].id }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1024,
+        384
+      ],
+      "id": "8299cee5-5a62-48f4-9aaa-ab8e7b70103b",
+      "name": "Create Preference (Service)",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZrFL5r1CEQJ8qTzR",
+          "name": "MercadoPago-PROD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE service_orders\nSET \n  mercadopago_preference_id = '{{ $('Create Preference (Service)').item.json.id }}',\n  payment_link = '{{ $('Create Preference (Service)').item.json.init_point }}',\n  payment_link_expires_at = NOW() + INTERVAL '72 hours'\nWHERE id = '{{ $('Get Service Order (Create)').item.json[0].id }}'\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1216,
+        384
+      ],
+      "id": "55768714-6e1d-4483-b938-2640f79cfaec",
+      "name": "Update Service Order (Create)",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  id,\n  mercadopago_preference_id,\n  payment_status,\n  payment_link,\n  cancelled_at\nFROM token_transactions\nWHERE id = '{{ $('Webhook').item.json.body.transactionId }}'\n  AND payment_status = 'pending'\n  AND cancelled_at IS NULL",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        816,
+        592
+      ],
+      "id": "23ea3069-f6a8-48e8-b391-4bf72b394c5b",
+      "name": "Get Token Transaction (Retry)",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  id,\n  mercadopago_preference_id,\n  payment_status,\n  cancelled_at\nFROM service_orders\nWHERE id = '{{ $('Webhook').item.json.body.serviceOrderId }}'\n  AND payment_status = 'pending'\n  AND cancelled_at IS NULL",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        816,
+        784
+      ],
+      "id": "00f02542-691a-4810-a4ac-d4a9fd25cdc7",
+      "name": "Get Service Order (Retry)",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        592
+      ],
+      "id": "0e7e349a-a410-4e4f-b2a0-5215c432fa3a",
+      "name": "Token Exists?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        784
+      ],
+      "id": "ae749d08-164b-4a86-9a69-ec9f0dbbfdbf",
+      "name": "Service Exists?"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadopago.com/checkout/preferences/{{ $json.mercadopago_preference_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        512
+      ],
+      "id": "7f23c9b5-dbf6-4c26-a9dd-562ebf1db0c8",
+      "name": "Get Token Preference",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZrFL5r1CEQJ8qTzR",
+          "name": "MercadoPago-PROD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadopago.com/checkout/preferences/{{ $('Get Service Order (Retry)').item.json[0].mercadopago_preference_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        688
+      ],
+      "id": "13c11ae4-486d-46db-a1d9-a3b7729a46f8",
+      "name": "Get Service Preference",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZrFL5r1CEQJ8qTzR",
+          "name": "MercadoPago-PROD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\n  UPDATE token_transactions\n  SET payment_link = '{{ $json.init_point }}'\n  WHERE id = '{{ $('Get Token Transaction (Retry)').item.json.id }}'\n  RETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1424,
+        480
+      ],
+      "id": "55da7534-92f8-491a-bf20-28daf5450a11",
+      "name": "Update Token Link",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE service_orders\nSET payment_link = '{{ $('Get Service Preference').item.json.init_point }}'\nWHERE id = '{{ $('Get Service Order (Retry)').item.json.id }}'\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1424,
+        688
+      ],
+      "id": "faf11d86-9f94-4c2e-85c6-118cc7497ff3",
+      "name": "Update Service Link",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $('Webhook').first().json.body.action || 'create';  // Default a 'create' si no se envía\nconst type = $('Webhook').first().json.body.type;\n\n// Si action no es 'retry', asumir que es creación (compatible hacia atrás)\nif (action !== 'retry') {\n  if (type === 'token') {\n    const preference = $('Create Preference (Token)').first().json;\n    const transaction = $('Insert Token Transaction').first().json;\n    return [{\n      json: {\n        success: true,\n        action: 'create',\n        type: 'token',\n        checkoutUrl: preference.init_point,\n        preferenceId: preference.id,\n        init_point: preference.init_point,\n        sandbox_init_point: preference.init_point,\n        transactionId: transaction.id\n      }\n    }];\n  } else if (type === 'service') {\n    const preference = $('Create Preference (Service)').first().json;\n    const order = $('Get Service Order (Create)').first().json;\n    \n    return [{\n      json: {\n        success: true,\n        action: 'create',\n        type: 'service',\n        checkoutUrl: preference.init_point,\n        preferenceId: preference.id,\n        init_point: preference.init_point,\n        sandbox_init_point: preference.init_point,\n        serviceOrderId: order.id\n      }\n    }];\n  }\n} else if (action === 'retry') {\n  const isToken = $('Webhook').first().json.body.transactionId !== undefined;\n  \n  if (isToken) {\n    const preference = $('Get Token Preference').first().json;\n    const transaction = $('Get Token Transaction (Retry)').first().json;\n    \n    return [{\n      json: {\n        success: true,\n        action: 'retry',\n        type: 'token',\n        checkoutUrl: preference.init_point,\n        preferenceId: preference.id,\n        init_point: preference.init_point,\n        sandbox_init_point: preference.init_point,\n        transactionId: transaction.id\n      }\n    }];\n  } else {\n    const preference = $('Get Service Preference').first().json;\n    const order = $('Get Service Order (Retry)').first().json;\n    \n    return [{\n      json: {\n        success: true,\n        action: 'retry',\n        type: 'service',\n        checkoutUrl: preference.init_point,\n        preferenceId: preference.id,\n        init_point: preference.init_point,\n        sandbox_init_point: preference.init_point,\n        serviceOrderId: order.id\n      }\n    }];\n  }\n}\n\nthrow new Error('Invalid action or type');"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        480
+      ],
+      "id": "d3e27d71-e2a8-4b60-8379-57d287e9b467",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1824,
+        480
+      ],
+      "id": "7bcf1d7a-ba37-47fd-9ece-894f4552c4d0",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Transaction or service order not found, cancelled, or already completed\"\n}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1216,
+        992
+      ],
+      "id": "bab93254-2d96-4536-a1d6-b907227c66df",
+      "name": "Respond Error"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create or Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create or Retry?": {
+      "main": [
+        [
+          {
+            "node": "Create Token or Service?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Token or Service?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Token or Service?": {
+      "main": [
+        [
+          {
+            "node": "Get Client (Token)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Service Order (Create)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Token or Service?": {
+      "main": [
+        [
+          {
+            "node": "Get Token Transaction (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Service Order (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client (Token)": {
+      "main": [
+        [
+          {
+            "node": "Get Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Package": {
+      "main": [
+        [
+          {
+            "node": "Create Preference (Token)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Preference (Token)": {
+      "main": [
+        [
+          {
+            "node": "Insert Token Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Token Transaction": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Service Order (Create)": {
+      "main": [
+        [
+          {
+            "node": "Create Preference (Service)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Preference (Service)": {
+      "main": [
+        [
+          {
+            "node": "Update Service Order (Create)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Service Order (Create)": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Token Transaction (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Token Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Service Order (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Service Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Exists?": {
+      "main": [
+        [
+          {
+            "node": "Get Token Preference",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Service Exists?": {
+      "main": [
+        [
+          {
+            "node": "Get Service Preference",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Token Preference": {
+      "main": [
+        [
+          {
+            "node": "Update Token Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Service Preference": {
+      "main": [
+        [
+          {
+            "node": "Update Service Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Token Link": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Service Link": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a55b6f1a889447664338719c09faeaf8f98b041a97ec5fbd212ff4a1fc79f7b"
+  }
+}

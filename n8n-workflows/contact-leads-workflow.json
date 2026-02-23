@@ -1,0 +1,88 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contact-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        288
+      ],
+      "id": "6d89ba00-39c2-4568-a34b-436cdbb3fa81",
+      "name": "Webhook1",
+      "webhookId": "61906f9f-36b6-4daa-ad7f-ff3339b4eb32"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook1').item.json.body.email }}",
+        "subject": "🎉 ¡Bienvenido a easy! Tu agente de ventas por WhatsApp está listo",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }\n    .cta-button { display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }\n    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🚀 ¡Hola {{ $('Webhook1').item.json.body.name }}!</h1>\n      <p>Estamos emocionados de ayudarte</p>\n    </div>\n    <div class=\"content\">\n      <h2>¿Qué es easy?</h2>\n      <p>easy es tu <strong>agente de ventas por WhatsApp con inteligencia artificial</strong>. Trabajamos 24/7 para:</p>\n      <ul>\n        <li>✅ Responder a tus clientes al instante</li>\n        <li>✅ Cerrar ventas automáticamente</li>\n        <li>✅ Procesar pagos online</li>\n        <li>✅ Capturar leads mientras duermes</li>\n      </ul>\n      \n      <h3>🎯 Siguiente paso</h3>\n      <p>Agenda una reunión de <strong>30 minutos</strong> con nuestro equipo para:</p>\n      <ul>\n        <li>📊 Revisar tu caso específico</li>\n        <li>💡 Diseñar tu agente personalizado</li>\n        <li>🚀 Configurar todo en menos de 24 horas</li>\n      </ul>\n      \n      <div style=\"text-align: center;\">\n        <a href=\"https://calendly.com/easy-development-tech/30min\" class=\"cta-button\">\n          📅 Agendar Reunión de 30 Minutos\n        </a>\n      </div>\n      \n      <p><strong>Mientras tanto:</strong></p>\n      <p>Puedes responder este correo con cualquier pregunta. Te responderemos en menos de 1 hora.</p>\n      \n      <hr style=\"margin: 30px 0; border: none; border-top: 1px solid #ddd;\">\n      \n      <p style=\"font-size: 14px; color: #666;\">\n        <strong>Datos que recibimos:</strong><br>\n        📱 Teléfono: {{ $('Webhook1').item.json.body.phone }}<br>\n        📧 Email: {{ $('Webhook1').item.json.body.email }}<br>\n        🆔 Agent ID: {{ $('Webhook1').item.json.body.agentId }}\n      </p>\n    </div>\n    <div class=\"footer\">\n      <p>easy - Agentes de IA para WhatsApp</p>\n      <p>Si no solicitaste este correo, puedes ignorarlo.</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        592,
+        288
+      ],
+      "id": "ca9f0265-01b2-43ed-a0b1-1dc8d7ca0019",
+      "name": "Send a message1",
+      "webhookId": "44abadb0-e907-4c60-8a8b-ac7c4698de22",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x0ZHQH5Mssw9xiHz",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Datos recibidos correctamente\", \"leadId\": $('Execute a SQL query1').item.json.id } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        992,
+        288
+      ],
+      "id": "b0659022-d0d6-4ba7-9452-aa1209f2c973",
+      "name": "Respond to Webhook1"
+    }
+  ],
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a55b6f1a889447664338719c09faeaf8f98b041a97ec5fbd212ff4a1fc79f7b"
+  }
+}

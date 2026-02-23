@@ -166,6 +166,12 @@ function PaymentStatusBadge({
       icon: AlertCircle,
       animate: false
     },
+    cancelled: {
+      label: 'Cancelado',
+      className: 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20',
+      icon: XCircle,
+      animate: false
+    },
   }
 
   const status = (paymentStatus || 'pending') as keyof typeof config
@@ -277,6 +283,7 @@ export function TokensSection() {
     },
     enabled: !!clientId,
     staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000, // Actualizar cada 1 minuto automáticamente
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })

@@ -1,0 +1,357 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mercadopago-ipn",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -192
+      ],
+      "id": "7f58a445-552d-4a4d-822a-45bad2cc6920",
+      "name": "Webhook",
+      "webhookId": "328b957e-f2c9-4481-9a9c-5592d87baa48"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3ded2cdb-06ad-4d87-80bd-a4fe8eac10e1",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "payment",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        -192
+      ],
+      "id": "e68e0459-ac65-4465-a154-4e8f4debb8f9",
+      "name": "s Payment?"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadopago.com/v1/payments/{{ $('Webhook').item.json.body.data.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        -192
+      ],
+      "id": "6804cd6b-7bce-4dd6-b950-4a0419b6768a",
+      "name": "Verify Payment",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZrFL5r1CEQJ8qTzR",
+          "name": "MercadoPago-PROD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e0ce43cb-fc20-4d8b-8853-638362775007",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        -192
+      ],
+      "id": "6db6fa27-5549-4586-9910-8ea8d49d227d",
+      "name": "Is Approved?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payment = $('Verify Payment').first().json;\nconst [clientId, packageId] = payment.external_reference.split('|');\n\nreturn [{\n  json: {\n    clientId,\n    packageId,\n    paymentId: String(payment.id),\n    amountPaid: payment.transaction_amount,\n    payerEmail: payment.payer?.email || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -192
+      ],
+      "id": "486f537d-3819-4fa0-8b89-7537027c8ed4",
+      "name": "Parse Reference",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM token_transactions WHERE payment_id = '{{ $json.paymentId }}' AND payment_status = 'approved'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        64,
+        112
+      ],
+      "id": "65ae61ea-1f11-4041-ad55-e4cee22f86f0",
+      "name": "Check Duplicate",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5e4408dd-3069-47e7-9ed8-a809646636f6",
+              "leftValue": "={{ $('Check Duplicate').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        320,
+        112
+      ],
+      "id": "67495a7b-b89d-4d02-ae21-95cb9c2f2b73",
+      "name": "Already Processed?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tokens, display_name FROM token_packages WHERE id = '{{ $('Parse Reference').item.json.packageId }}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        560,
+        112
+      ],
+      "id": "6c1cbb18-676a-49a6-9cb7-ede5be7f74ad",
+      "name": "Get Package",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO token_balances (client_id, total_tokens, last_recharge_at)\n  VALUES ('{{ $('Parse Reference').item.json.clientId }}', {{ $('Get Package').item.json.tokens }}, now())\n  ON CONFLICT (client_id)\n  DO UPDATE SET\n    total_tokens = token_balances.total_tokens + {{ $('Get Package').item.json.tokens }},\n    last_recharge_at = now(),\n    updated_at = now(),\n    is_active = true,\n    low_balance_notified = false",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        784,
+        112
+      ],
+      "id": "eeb6143a-47d9-45bc-b96d-212ff8f91eff",
+      "name": "Credit Tokens",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE token_transactions\nSET payment_status = 'approved',\n    payment_id = '{{ $('Parse Reference').item.json.paymentId }}'\nWHERE client_id = '{{ $('Parse Reference').item.json.clientId }}'\n  AND payment_status = 'pending'\n  AND package_id = '{{ $('Parse Reference').item.json.packageId }}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        992,
+        112
+      ],
+      "id": "b04d371d-139a-4418-953a-251024836628",
+      "name": "Update Transaction",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "s Payment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "s Payment?": {
+      "main": [
+        [
+          {
+            "node": "Verify Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Payment": {
+      "main": [
+        [
+          {
+            "node": "Is Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Approved?": {
+      "main": [
+        [
+          {
+            "node": "Parse Reference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reference": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Already Processed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Processed?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Get Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Package": {
+      "main": [
+        [
+          {
+            "node": "Credit Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Credit Tokens": {
+      "main": [
+        [
+          {
+            "node": "Update Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a55b6f1a889447664338719c09faeaf8f98b041a97ec5fbd212ff4a1fc79f7b"
+  }
+}

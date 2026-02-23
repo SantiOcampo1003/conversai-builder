@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "id": "{{ $('Get Package').item.json.id }}",
+      "title": "Paquete de Tokens - {{ $('Get Package').item.json.display_name }}",
+      "quantity": 1,
+      "unit_price": {{ $('Get Package').item.json.price_cop }},
+      "currency_id": "COP",
+      "description": "{{ $('Get Package').item.json.tokens }} tokens para tus agentes de IA"
+    }
+  ],
+  "payer": {
+    "email": "{{ $('Get Client').item.json.email }}",
+    "name": "{{ $('Get Client').item.json.name }}"
+  },
+  "back_urls": {
+    "success": "https://www.easyagent.space/payment/success",
+    "failure": "https://www.easyagent.space/payment/failure",
+    "pending": "https://www.easyagent.space/payment/pending"
+  },
+  "auto_return": "approved",
+  "notification_url": "https://easy-agents-n8n.ftppdk.easypanel.host/webhook/mercadopago-ipn",
+  "external_reference": "{{ $('Get Client').item.json.id }}|{{ $('Get Package').item.json.id }}",
+  "metadata": {
+    "client_id": "{{ $('Get Client').item.json.id }}",
+    "package_id": "{{ $('Get Package').item.json.id }}",
+    "tokens": {{ $('Get Package').item.json.tokens }}
+  }
+}
