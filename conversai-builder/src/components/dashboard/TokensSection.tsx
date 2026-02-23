@@ -23,6 +23,7 @@ import {
   Eye,
   Calendar,
   CreditCard,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -58,6 +59,9 @@ interface TokenTransaction {
   description: string | null
   metadata: any
   created_at: string
+  cancelled_at: string | null
+  payment_link: string | null
+  payment_expires_at: string | null
 }
 
 interface TokenPackage {
@@ -182,6 +186,7 @@ export function TokensSection() {
   const queryClient = useQueryClient()
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [payingService, setPayingService] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState<ServiceOrder | null>(null)
 
   // Query para datos de tokens
@@ -336,7 +341,8 @@ export function TokensSection() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: 'token', // ← NUEVO: indicar tipo de pago
+          action: 'create',
+          type: 'token',
           clientId,
           packageId,
         }),
@@ -381,13 +387,9 @@ export function TokensSection() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: 'service', // ← Tipo servicio
+          action: 'create',
+          type: 'service',
           serviceOrderId: order.id,
-          clientId: clientId,
-          price: order.price_cop,
-          priceUsd: order.price_usd,
-          serviceName: order.service?.display_name || 'Servicio Profesional',
-          description: order.custom_description || order.service?.description || '',
         }),
       })
 
@@ -410,6 +412,50 @@ export function TokensSection() {
       alert('Error al procesar el pago del servicio. Por favor intenta de nuevo.')
     } finally {
       setPayingService(null)
+    }
+  }
+
+  const handleRetryPayment = async (transactionId: string) => {
+    if (!clientId || !user) {
+      console.error('Client ID or user not found')
+      return
+    }
+
+    try {
+      setRetrying(transactionId)
+
+      const webhookUrl = import.meta.env.VITE_N8N_CREATE_PAYMENT_WEBHOOK
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'retry',
+          transactionId,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al reintentar el pago')
+      }
+
+      const data = await response.json()
+      console.log('Retry payment response:', data)
+
+      // Invalidar cache antes de redirigir
+      await queryClient.invalidateQueries({ queryKey: ['tokens-data'] })
+
+      // Redirigir a MercadoPago
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      }
+    } catch (err) {
+      console.error('Error retrying payment:', err)
+      alert('Error al reintentar el pago. Por favor intenta de nuevo.')
+    } finally {
+      setRetrying(null)
     }
   }
 
@@ -723,6 +769,9 @@ export function TokensSection() {
                   <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
                     Monto
                   </th>
+                  <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -775,6 +824,29 @@ export function TokensSection() {
                         <span className="text-sm text-muted-foreground">
                           {tx.amount_cop ? formatCurrency(tx.amount_cop) : '-'}
                         </span>
+                      </td>
+                      <td className="py-3 text-right">
+                        {isPending && !tx.cancelled_at && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRetryPayment(tx.id)}
+                            disabled={retrying === tx.id}
+                            className="h-8 text-xs"
+                          >
+                            {retrying === tx.id ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Procesando...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                Reintentar
+                              </>
+                            )}
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   )
