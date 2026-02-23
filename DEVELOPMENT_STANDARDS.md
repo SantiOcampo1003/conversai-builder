@@ -90,3 +90,5 @@ grep -l "client_members.*auth_user_id.*user.id" src/components/dashboard/*.tsx
 **Migraciones creadas**:
 - `20260221000006_create_is_super_admin_function.sql`
 - `20260221000007_fix_get_client_members_for_impersonation.sql`
+
+- v1
