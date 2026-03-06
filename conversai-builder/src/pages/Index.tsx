@@ -20,31 +20,7 @@ const Index = () => {
       navigate('/reset-password' + hash, { replace: true });
       return;
     }
-
-    // Detectar si viene de confirmación de email
-    if (hash && hash.includes('type=signup')) {
-      console.log('✅ Usuario confirmó su email');
-
-      // Mostrar toast de éxito
-      const toastShown = sessionStorage.getItem('email_confirmed_toast_shown');
-      if (!toastShown) {
-        toast({
-          title: '✅ Email verificado',
-          description: 'Tu email ha sido confirmado exitosamente. Ahora puedes continuar creando tu agente.',
-          duration: 5000,
-        });
-        sessionStorage.setItem('email_confirmed_toast_shown', 'true');
-      }
-
-      // Limpiar el hash
-      window.history.replaceState({}, '', window.location.pathname);
-
-      // Scroll al formulario para que continue
-      setTimeout(() => {
-        document.getElementById('flow-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 500);
-    }
-  }, [navigate, toast]);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-background">
