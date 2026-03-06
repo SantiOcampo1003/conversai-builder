@@ -91,4 +91,270 @@ grep -l "client_members.*auth_user_id.*user.id" src/components/dashboard/*.tsx
 - `20260221000006_create_is_super_admin_function.sql`
 - `20260221000007_fix_get_client_members_for_impersonation.sql`
 
+### 2026-03-06: Estándar de RLS Policies con Super Admin
+
+**Problema**: Recursión infinita en políticas RLS cuando `is_super_admin()` consultaba `client_members`, pero las políticas de `client_members` llamaban a `is_super_admin()`.
+
+**Solución**:
+1. `is_super_admin()` lee desde JWT metadata (`user_metadata.is_super_admin`)
+2. Trigger sincroniza el rol a metadata automáticamente
+3. Todas las políticas RLS usan el patrón estándar
+
+**Migraciones creadas**:
+- `20260306201228_fix_super_admin_recursion.sql` - Función `is_super_admin()` desde JWT
+- `20260306202913_fix_client_members_policies_recursion.sql` - Políticas de `client_members`
+- `20260306203415_add_super_admin_to_all_team_tables.sql` - Políticas de `member_permissions`
+
+---
+
+## 🔒 Estándar de Row Level Security (RLS) Policies
+
+### ⚙️ Arquitectura de `is_super_admin()`
+
+**NUNCA** consultar tablas dentro de `is_super_admin()` para evitar recursión infinita.
+
+#### ✅ Implementación Correcta:
+
+```sql
+-- Función que lee desde JWT (NO consulta client_members)
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    (auth.jwt() -> 'user_metadata' ->> 'is_super_admin')::boolean,
+    false
+  );
+$$;
+```
+
+#### 🔄 Sincronización Automática a Metadata:
+
+```sql
+-- Trigger que mantiene is_super_admin sincronizado en user metadata
+CREATE OR REPLACE FUNCTION public.sync_super_admin_to_metadata()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_is_super boolean;
+BEGIN
+  v_is_super := (NEW.role = 'super_admin' AND NEW.status = 'active');
+
+  UPDATE auth.users
+  SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) ||
+      jsonb_build_object('is_super_admin', v_is_super)
+  WHERE id = NEW.auth_user_id;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER sync_super_admin_metadata_on_insert
+  AFTER INSERT ON public.client_members
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_super_admin_to_metadata();
+
+CREATE TRIGGER sync_super_admin_metadata_on_update
+  AFTER UPDATE ON public.client_members
+  FOR EACH ROW
+  WHEN (OLD.role IS DISTINCT FROM NEW.role OR OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION public.sync_super_admin_to_metadata();
+```
+
+---
+
+### 📋 Patrón Estándar de Políticas RLS
+
+**TODAS** las tablas que requieren acceso por cliente deben seguir este patrón:
+
+#### Template para Políticas:
+
+```sql
+-- ══════════════════════════════════════════════════════════
+-- TABLA: nombre_tabla
+-- ══════════════════════════════════════════════════════════
+
+-- SELECT: super_admin O miembros del cliente
+CREATE POLICY "view_nombre_tabla"
+  ON nombre_tabla FOR SELECT
+  TO authenticated
+  USING (
+    public.is_super_admin()
+    OR client_id IN (SELECT public.get_my_client_ids())
+  );
+
+-- INSERT: super_admin O miembros del cliente
+CREATE POLICY "insert_nombre_tabla"
+  ON nombre_tabla FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_super_admin()
+    OR client_id IN (SELECT public.get_my_client_ids())
+  );
+
+-- UPDATE: super_admin O miembros del cliente
+CREATE POLICY "update_nombre_tabla"
+  ON nombre_tabla FOR UPDATE
+  TO authenticated
+  USING (
+    public.is_super_admin()
+    OR client_id IN (SELECT public.get_my_client_ids())
+  );
+
+-- DELETE: super_admin O miembros del cliente
+CREATE POLICY "delete_nombre_tabla"
+  ON nombre_tabla FOR DELETE
+  TO authenticated
+  USING (
+    public.is_super_admin()
+    OR client_id IN (SELECT public.get_my_client_ids())
+  );
+```
+
+#### ⚠️ Reglas Críticas:
+
+1. **SIEMPRE** incluir `public.is_super_admin()` como primera condición en TODAS las políticas
+2. **NUNCA** usar `EXISTS (SELECT FROM client_members)` dentro de políticas - causa recursión
+3. **SIEMPRE** usar `get_my_client_ids()` (función SECURITY DEFINER) para obtener clientes del usuario
+4. **Mantener orden**: Super admin primero, luego condiciones normales
+
+#### 🔍 Ejemplo Real - member_permissions:
+
+```sql
+-- SELECT: super_admin O miembros del cliente O el propio miembro
+CREATE POLICY "view permissions"
+  ON member_permissions FOR SELECT
+  TO authenticated
+  USING (
+    public.is_super_admin()
+    OR member_id IN (
+      SELECT cm.id FROM client_members cm
+      WHERE cm.client_id IN (SELECT public.get_my_client_ids())
+    )
+    OR member_id IN (
+      SELECT id FROM client_members WHERE auth_user_id = auth.uid()
+    )
+  );
+
+-- INSERT: super_admin O miembros del cliente
+CREATE POLICY "insert permissions"
+  ON member_permissions FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_super_admin()
+    OR member_id IN (
+      SELECT cm.id FROM client_members cm
+      WHERE cm.client_id IN (SELECT public.get_my_client_ids())
+    )
+  );
+```
+
+---
+
+### ✅ Checklist para Nuevas Tablas con RLS:
+
+1. ☐ Crear políticas SELECT, INSERT, UPDATE, DELETE
+2. ☐ Incluir `public.is_super_admin()` como primera condición
+3. ☐ Usar `get_my_client_ids()` para filtrar por cliente
+4. ☐ NUNCA consultar `client_members` directamente en políticas
+5. ☐ Probar con super admin impersonalizando
+6. ☐ Probar con usuario admin normal
+7. ☐ Probar con usuario viewer/member
+
+---
+
+### 🚫 Anti-Patrones (NO HACER):
+
+#### ❌ Recursión Infinita:
+
+```sql
+-- ❌ MAL - Causa recursión infinita
+CREATE POLICY "bad_policy"
+  ON client_members FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM client_members  -- ← Consulta la misma tabla!
+      WHERE role = 'super_admin'
+    )
+  );
+```
+
+#### ❌ Sin Soporte de Super Admin:
+
+```sql
+-- ❌ MAL - Super admin no puede acceder
+CREATE POLICY "incomplete_policy"
+  ON agents FOR SELECT
+  USING (
+    client_id IN (SELECT get_my_client_ids())
+    -- ← Falta OR public.is_super_admin()
+  );
+```
+
+#### ❌ Consulta Directa a client_members:
+
+```sql
+-- ❌ MAL - Puede causar recursión
+CREATE POLICY "bad_check"
+  ON agents FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM client_members
+      WHERE auth_user_id = auth.uid()
+        AND role = 'admin'
+    )
+  );
+
+-- ✅ BIEN - Usar is_super_admin() o get_my_client_ids()
+CREATE POLICY "good_check"
+  ON agents FOR INSERT
+  WITH CHECK (
+    public.is_super_admin()
+    OR client_id IN (SELECT public.get_my_client_ids())
+  );
+```
+
+---
+
+## 🔧 Funciones Helper Disponibles
+
+### `public.is_super_admin()`
+- **Propósito**: Verificar si el usuario autenticado es super admin
+- **Retorna**: `boolean`
+- **Uso**: Incluir en TODAS las políticas RLS
+- **Seguro**: ✅ No causa recursión (lee desde JWT)
+
+### `public.get_my_client_ids()`
+- **Propósito**: Obtener IDs de clientes donde el usuario es miembro activo
+- **Retorna**: `TABLE(client_id uuid)`
+- **Uso**: Filtrar datos por cliente
+- **Seguro**: ✅ Usa SECURITY DEFINER
+
+### `public.is_admin_of_client(p_client_id uuid)`
+- **Propósito**: Verificar si el usuario es admin de un cliente específico
+- **Retorna**: `boolean`
+- **Uso**: Validaciones específicas de admin
+- **Seguro**: ✅ Usa SECURITY DEFINER
+
+---
+
+## 📊 Tablas con RLS Implementado Correctamente:
+
+- ✅ `clients` - Clientes
+- ✅ `client_members` - Membresías de equipo
+- ✅ `member_permissions` - Permisos granulares
+- ✅ `agents` - Agentes de IA
+- ✅ `chat_history` - Conversaciones
+- ✅ `token_balances` - Saldo de tokens
+- ✅ `token_transactions` - Transacciones de tokens
+- ✅ `whatsapp_lines` - Líneas de WhatsApp (agregada 2026-02-22)
+
+---
+
 - v2
