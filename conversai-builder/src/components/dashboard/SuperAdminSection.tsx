@@ -390,13 +390,13 @@ export function SuperAdminSection() {
       if (clientError) throw clientError
 
       // Crear balance de tokens inicial (opcional: 0 tokens)
+      // NOTA: available_tokens es una columna generada, no se debe insertar
       const { error: balanceError } = await supabase
         .from('token_balances')
         .insert([{
           client_id: client.id,
           total_tokens: 0,
           used_tokens: 0,
-          available_tokens: 0,
           is_active: true,
         }])
 

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitacion al equipo - easy AI Agents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f6f8fa;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f6f8fa; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Main Container -->
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);">
+
+          <!-- Header with brand -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #00D98E 0%, #00F5A0 100%); padding: 40px 40px 30px; text-align: center;">
+              <div style="background-color: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); width: 56px; height: 56px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+                <span style="font-size: 28px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px;">e</span>
+              </div>
+              <h1 style="margin: 0; font-size: 32px; font-weight: 900; color: #ffffff; letter-spacing: -1px;">easy</h1>
+              <p style="margin: 4px 0 0; font-size: 10px; color: rgba(255, 255, 255, 0.85); letter-spacing: 2.5px; font-weight: 500;">AI AGENTS</p>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 48px 40px;">
+              <h2 style="margin: 0 0 16px; font-size: 24px; font-weight: 700; color: #1a1d23; letter-spacing: -0.5px;">Te han invitado a un equipo 🎉</h2>
+
+              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #6b7280; font-weight: 400;">
+                Has sido invitado a unirte a un equipo en easy AI Agents. Podrás colaborar en la gestión de agentes de IA y acceder a las herramientas del equipo.
+              </p>
+
+              <!-- Invite Info Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; border-radius: 10px; border: 2px solid #00D98E; margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px;">
+                    <p style="margin: 0 0 8px; font-size: 14px; color: #6b7280; font-weight: 500;">Has sido invitado por:</p>
+                    <p style="margin: 0 0 16px; font-size: 18px; color: #1a1d23; font-weight: 700;">{{ .Data.inviter_name }}</p>
+                    <p style="margin: 0 0 4px; font-size: 14px; color: #6b7280; font-weight: 500;">Rol asignado:</p>
+                    <p style="margin: 0; font-size: 16px; color: #00D98E; font-weight: 600; text-transform: capitalize;">{{ .Data.role }}</p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 32px; font-size: 16px; line-height: 1.6; color: #6b7280; font-weight: 400;">
+                Haz clic en el botón de abajo para aceptar la invitación y unirte al equipo:
+              </p>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding: 0 0 32px;">
+                    <a href="{{ .ConfirmationURL }}" style="display: inline-block; background: linear-gradient(135deg, #00D98E 0%, #00F5A0 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(0, 217, 142, 0.3); letter-spacing: -0.2px;">
+                      Aceptar invitacion
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Alternative link -->
+              <p style="margin: 0 0 8px; font-size: 14px; color: #9ca3af; font-weight: 500;">
+                O copia y pega este enlace en tu navegador:
+              </p>
+              <p style="margin: 0 0 32px; font-size: 13px; word-break: break-all; color: #00D98E; background-color: #f3f4f6; padding: 12px 16px; border-radius: 8px; font-weight: 500;">
+                {{ .ConfirmationURL }}
+              </p>
+
+              <!-- Info Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #eff6ff; border-radius: 8px; border-left: 3px solid #3b82f6;">
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <p style="margin: 0; font-size: 14px; color: #1e40af; line-height: 1.5; font-weight: 500;">
+                      <strong style="font-weight: 700;">💡 Nota:</strong> Si no esperabas esta invitación o no conoces al remitente, puedes ignorar este email de forma segura.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Features Preview -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 32px;">
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 16px; font-size: 14px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Lo que podras hacer:</p>
+                  </td>
+                </tr>
+              </table>
+
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="50%" style="padding-right: 8px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px;">
+                      <tr>
+                        <td style="padding: 16px;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">🤖</p>
+                          <p style="margin: 0; font-size: 13px; color: #374151; font-weight: 600;">Gestionar agentes</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td width="50%" style="padding-left: 8px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px;">
+                      <tr>
+                        <td style="padding: 16px;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">📊</p>
+                          <p style="margin: 0; font-size: 13px; color: #374151; font-weight: 600;">Ver estadísticas</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr><td colspan="2" style="height: 8px;"></td></tr>
+                <tr>
+                  <td width="50%" style="padding-right: 8px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px;">
+                      <tr>
+                        <td style="padding: 16px;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">👥</p>
+                          <p style="margin: 0; font-size: 13px; color: #374151; font-weight: 600;">Colaborar en equipo</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td width="50%" style="padding-left: 8px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px;">
+                      <tr>
+                        <td style="padding: 16px;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">⚙️</p>
+                          <p style="margin: 0; font-size: 13px; color: #374151; font-weight: 600;">Configurar ajustes</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 32px 40px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0 0 12px; font-size: 14px; color: #6b7280; text-align: center; font-weight: 500;">
+                ¿Necesitas ayuda? Contáctanos en <a href="mailto:support@easy-agents.com" style="color: #00D98E; text-decoration: none; font-weight: 600;">support@easy-agents.com</a>
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; font-weight: 400;">
+                © 2024 easy AI Agents. Todos los derechos reservados.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Security notice -->
+        <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af; text-align: center; max-width: 600px; font-weight: 400;">
+          Este es un email automático, por favor no respondas directamente.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

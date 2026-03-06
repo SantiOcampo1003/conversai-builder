@@ -38,7 +38,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signUpWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        // Email de verificación (no bloqueante)
+        emailRedirectTo: `${window.location.origin}/dashboard`,
+        // Datos adicionales del usuario
+        data: {
+          email_verified: false,
+        }
+      }
+    })
+
+    // Si el usuario se creó pero no está autenticado automáticamente
+    // (puede pasar con enable_confirmations = false en algunas configuraciones)
+    if (!error && data.user && !data.session) {
+      console.log('Usuario creado, iniciando sesión automática...')
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+      return { error: signInError }
+    }
+
     return { error }
   }
 
