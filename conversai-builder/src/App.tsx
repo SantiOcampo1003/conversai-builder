@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import ChatTest from "./pages/ChatTest";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import AgentEditor from "./pages/AgentEditor";
 import NotFound from "./pages/NotFound";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -48,6 +49,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/chat-test" element={<ChatTest />} />
       <Route path="/dashboard" element={<Navigate to="/dashboard/overview" replace />} />
       <Route path="/dashboard/:section" element={<PrivateRoute><Dashboard /></PrivateRoute>} />

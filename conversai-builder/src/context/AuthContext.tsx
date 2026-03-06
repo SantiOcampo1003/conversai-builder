@@ -80,7 +80,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('✅ Auto-login exitoso, sesión creada:', loginData.session?.user.id)
+
+      // Enviar email de verificación manualmente (ya que enable_confirmations está OFF)
+      try {
+        console.log('📧 Enviando email de verificación...')
+        await supabase.auth.resend({
+          type: 'signup',
+          email: email,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`
+          }
+        })
+        console.log('✅ Email de verificación enviado')
+      } catch (emailError) {
+        console.warn('⚠️  Error enviando email de verificación (no crítico):', emailError)
+      }
+
       return { error: null }
+    }
+
+    // Si hay sesión automática, también enviar email de verificación
+    if (data.session && data.user && !data.user.email_confirmed_at) {
+      try {
+        console.log('📧 Enviando email de verificación...')
+        await supabase.auth.resend({
+          type: 'signup',
+          email: email,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`
+          }
+        })
+        console.log('✅ Email de verificación enviado')
+      } catch (emailError) {
+        console.warn('⚠️  Error enviando email de verificación (no crítico):', emailError)
+      }
     }
 
     console.log('✅ Sesión creada automáticamente')

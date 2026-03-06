@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,8 +15,10 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState<string | null>(null)
   const [isSignup, setIsSignup] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
 
   // Decodificar parámetros de invitación desde base64
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setSuccess(null)
     setLoading(true)
 
     const { error } = isSignup
@@ -82,6 +86,34 @@ export default function Login() {
       setLoading(false)
     }
     // Si no hay error, el useEffect de arriba detecta el user y redirige
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setSuccess(null)
+
+    if (!email) {
+      setError('Ingresa tu email para recuperar tu contraseña')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      })
+
+      if (error) throw error
+
+      setSuccess('Te enviamos un email con instrucciones para recuperar tu contraseña. Revisa tu bandeja de entrada.')
+      setShowForgotPassword(false)
+    } catch (err: any) {
+      setError(err.message || 'Error al enviar el email de recuperación')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleGoogle = async () => {
@@ -179,66 +211,147 @@ export default function Login() {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {inviteEmail && (
+          {showForgotPassword ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
               <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4">
                 <p className="text-xs text-primary font-medium">
-                  📧 Invitación de equipo
+                  🔐 Recuperar contraseña
                 </p>
                 <p className="text-xs text-primary/80 mt-1">
-                  Crea tu cuenta con el email <span className="font-semibold">{inviteEmail}</span> para aceptar la invitación.
+                  Te enviaremos un email con instrucciones para restablecer tu contraseña.
                 </p>
               </div>
-            )}
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
-                className="mt-1.5 h-11 border-2 bg-secondary/50"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="password" className="text-sm font-medium">
-                Contraseña {isSignup && <span className="text-xs text-muted-foreground font-normal">(mínimo 6 caracteres)</span>}
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="mt-1.5 h-11 border-2 bg-secondary/50"
-                required
-                minLength={isSignup ? 6 : undefined}
-              />
-            </div>
 
-            {error && (
-              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
+              <div>
+                <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
+                  className="mt-1.5 h-11 border-2 bg-secondary/50"
+                  required
+                />
+              </div>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/30"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {isSignup ? 'Creando cuenta...' : 'Iniciando sesión...'}
-                </>
-              ) : (
-                isSignup ? 'Crear cuenta' : 'Iniciar sesión'
+              {error && (
+                <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                  {error}
+                </p>
               )}
-            </Button>
-          </form>
+
+              {success && (
+                <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 dark:bg-green-950/20 dark:border-green-800">
+                  {success}
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowForgotPassword(false)}
+                  className="flex-1 h-11"
+                  disabled={loading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 h-11 gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/30"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 w-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    'Enviar email'
+                  )}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {inviteEmail && (
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-primary font-medium">
+                    📧 Invitación de equipo
+                  </p>
+                  <p className="text-xs text-primary/80 mt-1">
+                    Crea tu cuenta con el email <span className="font-semibold">{inviteEmail}</span> para aceptar la invitación.
+                  </p>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
+                  className="mt-1.5 h-11 border-2 bg-secondary/50"
+                  required
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label htmlFor="password" className="text-sm font-medium">
+                    Contraseña {isSignup && <span className="text-xs text-muted-foreground font-normal">(mínimo 6 caracteres)</span>}
+                  </Label>
+                  {!isSignup && !inviteEmail && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-xs text-primary hover:underline font-medium"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  )}
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="mt-1.5 h-11 border-2 bg-secondary/50"
+                  required
+                  minLength={isSignup ? 6 : undefined}
+                />
+              </div>
+
+              {error && (
+                <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )}
+
+              {success && (
+                <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 dark:bg-green-950/20 dark:border-green-800">
+                  {success}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-11 gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/30"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {isSignup ? 'Creando cuenta...' : 'Iniciando sesión...'}
+                  </>
+                ) : (
+                  isSignup ? 'Crear cuenta' : 'Iniciar sesión'
+                )}
+              </Button>
+            </form>
+          )}
         </div>
 
         {!inviteEmail && (
