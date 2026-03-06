@@ -18,12 +18,29 @@ export default function ResetPassword() {
   useEffect(() => {
     // Verificar si hay un token de recuperación válido
     const checkSession = async () => {
+      // Primero, intentar procesar los tokens del hash si existen
+      const hash = window.location.hash
+
+      if (hash && hash.includes('access_token')) {
+        console.log('🔐 Procesando tokens de recuperación desde hash...')
+
+        // Supabase procesa automáticamente los tokens del hash
+        // Solo necesitamos esperar un momento para que se procesen
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // Limpiar el hash de la URL
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+
+      // Verificar sesión
       const { data } = await supabase.auth.getSession()
 
       // Si hay sesión y viene de recuperación, es válido
       if (data.session) {
+        console.log('✅ Sesión válida encontrada')
         setValidToken(true)
       } else {
+        console.log('❌ No hay sesión válida')
         setError('El enlace de recuperación es inválido o ha expirado. Solicita uno nuevo.')
       }
     }
