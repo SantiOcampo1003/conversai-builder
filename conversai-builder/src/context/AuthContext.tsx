@@ -44,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        // Email de verificación (no bloqueante)
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        // Redirigir al home para que continúe creando su agente
+        emailRedirectTo: `${window.location.origin}/`,
         // Datos adicionales del usuario
         data: {
           email_verified: false,
@@ -60,64 +60,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('✅ Usuario creado:', data.user?.id)
     console.log('📝 Sesión después del signup:', data.session ? 'SÍ' : 'NO')
+    console.log('📧 Email confirmed at:', data.user?.email_confirmed_at)
 
-    // Si el usuario se creó pero no está autenticado automáticamente
-    // (puede pasar con enable_confirmations = false en algunas configuraciones)
-    if (data.user && !data.session) {
-      console.log('⚠️  No hay sesión, intentando auto-login...')
+    // Con enable_confirmations = true:
+    // - signUp SIEMPRE crea una sesión temporal (no bloqueante)
+    // - El email se envía automáticamente
+    // - El usuario puede usar la app mientras no confirme
 
-      // Pequeña espera para asegurar que el usuario está completamente creado
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      const { data: loginData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (signInError) {
-        console.error('❌ Error en auto-login:', signInError)
-        return { error: signInError }
-      }
-
-      console.log('✅ Auto-login exitoso, sesión creada:', loginData.session?.user.id)
-
-      // Enviar email de verificación manualmente (ya que enable_confirmations está OFF)
-      try {
-        console.log('📧 Enviando email de verificación...')
-        await supabase.auth.resend({
-          type: 'signup',
-          email: email,
-          options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`
-          }
-        })
-        console.log('✅ Email de verificación enviado')
-      } catch (emailError) {
-        console.warn('⚠️  Error enviando email de verificación (no crítico):', emailError)
-      }
-
+    // Si hay sesión (sea confirmada o no), el usuario puede acceder
+    if (data.session) {
+      console.log('✅ Sesión creada - Usuario puede acceder a la app')
       return { error: null }
     }
 
-    // Si hay sesión automática, también enviar email de verificación
-    if (data.session && data.user && !data.user.email_confirmed_at) {
-      try {
-        console.log('📧 Enviando email de verificación...')
-        await supabase.auth.resend({
-          type: 'signup',
-          email: email,
-          options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`
-          }
-        })
-        console.log('✅ Email de verificación enviado')
-      } catch (emailError) {
-        console.warn('⚠️  Error enviando email de verificación (no crítico):', emailError)
-      }
-    }
-
-    console.log('✅ Sesión creada automáticamente')
-    return { error: null }
+    // Si NO hay sesión (caso raro), es un error
+    console.error('❌ No se creó sesión después del signup')
+    return { error: new Error('No se pudo crear la sesión') as any }
   }
 
   const signInWithEmail = async (email: string, password: string) => {

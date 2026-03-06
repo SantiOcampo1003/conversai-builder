@@ -188,6 +188,9 @@ content_path = "./supabase/templates/recovery.html"
 subject = "Invitacion al equipo - easy AI Agents"
 content_path = "./supabase/templates/invite.html"
 
+# Note: Email confirmation redirects to "/" (home) so user can continue creating their agent
+# Password recovery redirects to "/reset-password"
+
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
 enable_signup = false
