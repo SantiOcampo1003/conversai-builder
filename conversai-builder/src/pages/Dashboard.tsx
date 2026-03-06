@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/hooks/use-toast'
 import {
   Bot,
   LayoutDashboard,
@@ -27,6 +28,7 @@ import { TokensSection } from '@/components/dashboard/TokensSection'
 import { AgentUsageSection } from '@/components/dashboard/AgentUsageSection'
 import { SuperAdminSection } from '@/components/dashboard/SuperAdminSection'
 import { FeedbackDialog } from '@/components/FeedbackDialog'
+import { VerifyEmailBanner } from '@/components/VerifyEmailBanner'
 import { Button } from '@/components/ui/button'
 import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 import { useClientContext } from '@/hooks/use-client-context'
@@ -69,6 +71,8 @@ export default function Dashboard() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const { section } = useParams<{ section: string }>()
+  const [searchParams] = useSearchParams()
+  const { toast } = useToast()
   const [collapsed, setCollapsed] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [allowedSections, setAllowedSections] = useState<Set<string> | null>(null) // null = loading
@@ -108,6 +112,57 @@ export default function Dashboard() {
       loadClientName()
     }
   }, [])
+
+  // Detectar confirmación de email exitosa
+  useEffect(() => {
+    if (!user) return
+
+    // Verificar si hay parámetros de confirmación en la URL
+    const type = searchParams.get('type')
+
+    // Si viene de una confirmación de email
+    if (type === 'signup' || type === 'email_change') {
+      // Verificar si ya se mostró el toast
+      const toastShown = sessionStorage.getItem('email_confirmed_toast_shown')
+
+      if (!toastShown && user.email_confirmed_at) {
+        // Mostrar notificación de éxito
+        toast({
+          title: '✅ Email verificado',
+          description: 'Tu dirección de email ha sido confirmada exitosamente.',
+          duration: 5000,
+        })
+
+        // Marcar que ya se mostró
+        sessionStorage.setItem('email_confirmed_toast_shown', 'true')
+
+        // Limpiar los parámetros de la URL
+        const newUrl = window.location.pathname
+        window.history.replaceState({}, '', newUrl)
+      }
+    }
+
+    // Escuchar cambios en el estado de auth para detectar confirmación
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'USER_UPDATED' && session?.user?.email_confirmed_at) {
+        const toastShown = sessionStorage.getItem('email_confirmed_toast_shown')
+
+        if (!toastShown) {
+          toast({
+            title: '✅ Email verificado',
+            description: 'Tu dirección de email ha sido confirmada exitosamente.',
+            duration: 5000,
+          })
+
+          sessionStorage.setItem('email_confirmed_toast_shown', 'true')
+        }
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [user, searchParams, toast])
 
   // Cargar rol y permisos del usuario actual
   useEffect(() => {
@@ -282,6 +337,10 @@ export default function Dashboard() {
   }
 
   const handleSignOut = async () => {
+    // Limpiar flags de sesión
+    sessionStorage.removeItem('email_confirmed_toast_shown')
+    sessionStorage.removeItem('email_banner_dismissed')
+
     await signOut()
     navigate('/')
   }
@@ -438,6 +497,13 @@ export default function Dashboard() {
               <Shield className="h-4 w-4" />
               Volver a Super Admin
             </Button>
+          </div>
+        )}
+
+        {/* Email Verification Banner */}
+        {!isImpersonating && (
+          <div className="px-6 pt-6">
+            <VerifyEmailBanner />
           </div>
         )}
 

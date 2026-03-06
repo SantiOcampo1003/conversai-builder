@@ -38,6 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signUpWithEmail = async (email: string, password: string) => {
+    console.log('🔐 Iniciando registro de usuario...')
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -51,18 +53,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
+    if (error) {
+      console.error('❌ Error en signup:', error)
+      return { error }
+    }
+
+    console.log('✅ Usuario creado:', data.user?.id)
+    console.log('📝 Sesión después del signup:', data.session ? 'SÍ' : 'NO')
+
     // Si el usuario se creó pero no está autenticado automáticamente
     // (puede pasar con enable_confirmations = false en algunas configuraciones)
-    if (!error && data.user && !data.session) {
-      console.log('Usuario creado, iniciando sesión automática...')
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+    if (data.user && !data.session) {
+      console.log('⚠️  No hay sesión, intentando auto-login...')
+
+      // Pequeña espera para asegurar que el usuario está completamente creado
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      const { data: loginData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
       })
-      return { error: signInError }
+
+      if (signInError) {
+        console.error('❌ Error en auto-login:', signInError)
+        return { error: signInError }
+      }
+
+      console.log('✅ Auto-login exitoso, sesión creada:', loginData.session?.user.id)
+      return { error: null }
     }
 
-    return { error }
+    console.log('✅ Sesión creada automáticamente')
+    return { error: null }
   }
 
   const signInWithEmail = async (email: string, password: string) => {
