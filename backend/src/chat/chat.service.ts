@@ -94,7 +94,7 @@ export class ChatService {
       .eq('agent_id', agentId)
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
-      .limit(20); // Últimos 20 mensajes
+      .limit(10); // Últimos x mensajes
 
     if (historyError) {
       console.error('❌ Error cargando historial:', historyError);

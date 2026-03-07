@@ -75,9 +75,6 @@ export class LangchainService {
         agent.required_info,
       );
 
-      // Configurar límite de iteraciones para evitar loops infinitos y sobrecostos
-      const maxIterations = this.configService.get<number>('AGENT_MAX_ITERATIONS', 5);
-
       // Crear react agent con createAgent de langchain
       const customAgent = createAgent({
         model,
@@ -85,7 +82,7 @@ export class LangchainService {
         systemPrompt: businessInfo, // System prompt
       });
 
-      console.log(`🚀 Ejecutando agent con tools (max iteraciones: ${maxIterations}, parallel_tool_calls: enabled)...`);
+      console.log(`🚀 Ejecutando agent con tools (parallel_tool_calls: enabled)...`);
 
       const result = await customAgent.invoke(
         {
@@ -93,7 +90,6 @@ export class LangchainService {
         },
         {
           callbacks: [tokenCounter],
-          recursionLimit: maxIterations, // Límite de iteraciones para evitar loops infinitos
         },
       );
 
