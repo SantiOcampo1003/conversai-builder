@@ -11,7 +11,7 @@ import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { DatabaseService } from '../database/database.service';
-import { AgentExecutor, createToolCallingAgent } from 'langchain/agents';
+import { createAgent } from 'langchain';
 
 export interface AgentResponse {
   content: string;
@@ -70,41 +70,27 @@ export class LangchainService {
         agent.required_info,
       );
 
-      // Crear prompt para agent
-      const prompt = ChatPromptTemplate.fromMessages([
-        ['system', businessInfo],
-        new MessagesPlaceholder('chat_history'),
-        ['human', '{input}'],
-        new MessagesPlaceholder('agent_scratchpad'),
-      ]);
-
-      // Crear agent con tool calling
-      const agentWithTools = await createToolCallingAgent({
-        llm: model,
+      // Crear react agent con nuevo createAgent de langchain
+      const customAgent = createAgent({
+        model,
         tools: [customerInfoTool],
-        prompt,
-      });
-
-      // Crear executor
-      const executor = new AgentExecutor({
-        agent: agentWithTools,
-        tools: [customerInfoTool],
-        verbose: false,
+        systemPrompt: businessInfo, // System prompt
       });
 
       console.log('🚀 Ejecutando agent con tools...');
 
-      const result = await executor.invoke(
+      const result = await customAgent.invoke(
         {
-          chat_history: messages,
-          input: userMessage,
+          messages: [...messages, new HumanMessage(userMessage)],
         },
         {
           callbacks: [tokenCounter],
         },
       );
 
-      const responseText = result.output;
+      // El resultado viene en result.messages, el último es la respuesta del agente
+      const lastMessage = result.messages[result.messages.length - 1];
+      const responseText = lastMessage.content as string;
 
       console.log(`✅ Respuesta generada: ${responseText.substring(0, 50)}...`);
       console.log(`📊 Tokens totales: ${tokenCounter.totalTokens}`);
