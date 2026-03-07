@@ -91,6 +91,38 @@ export default function Dashboard() {
   // Determinar la sección activa desde la URL
   const activeSection = (section || 'overview') as SectionId
 
+  // Handle dragging with global mouse events
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault()
+
+      // Calcular el movimiento desde la posición inicial
+      const deltaX = dragStart.x - e.clientX
+      const deltaY = dragStart.y - e.clientY // Invertido porque bottom crece hacia arriba
+
+      setFeedbackPosition(prev => ({
+        bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
+        right: Math.max(24, Math.min(200, prev.right + deltaX)),
+      }))
+
+      setDragStart({ x: e.clientX, y: e.clientY })
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, dragStart])
+
   // Detectar si estamos impersonalizando
   useEffect(() => {
     const impersonation = sessionStorage.getItem('super_admin_impersonating')
@@ -481,48 +513,42 @@ export default function Dashboard() {
 
         {/* Floating Feedback Button - Draggable */}
         <div
-          className="fixed z-50 cursor-move"
+          className="fixed z-50 select-none"
           style={{
             bottom: `${feedbackPosition.bottom}px`,
             right: `${feedbackPosition.right}px`,
+            cursor: isDragging ? 'grabbing' : 'grab',
           }}
-          onMouseEnter={() => setFeedbackHover(true)}
-          onMouseLeave={() => setFeedbackHover(false)}
+          onMouseEnter={() => !isDragging && setFeedbackHover(true)}
+          onMouseLeave={() => !isDragging && setFeedbackHover(false)}
           onMouseDown={(e) => {
+            if (e.button !== 0) return // Solo click izquierdo
+            e.preventDefault()
             setIsDragging(true)
             setDragStart({
               x: e.clientX,
               y: e.clientY,
             })
           }}
-          onMouseMove={(e) => {
-            if (!isDragging) return
-            e.preventDefault()
-            const deltaX = dragStart.x - e.clientX
-            const deltaY = e.clientY - dragStart.y
-
-            setFeedbackPosition(prev => ({
-              bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
-              right: Math.max(24, Math.min(window.innerWidth - 200, prev.right + deltaX)),
-            }))
-
-            setDragStart({
-              x: e.clientX,
-              y: e.clientY,
-            })
-          }}
-          onMouseUp={() => setIsDragging(false)}
-          onMouseLeave={() => isDragging && setIsDragging(false)}
         >
-          <div className="w-[152px] h-14 flex items-center justify-end">
+          <div
+            className="w-[152px] h-14 flex items-center justify-end"
+            onClick={(e) => {
+              if (isDragging) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
+          >
             <FeedbackDialog
               trigger={
                 <Button
                   size="lg"
                   className={cn(
-                    "rounded-full shadow-2xl shadow-primary/30 h-14 bg-gradient-to-br from-primary to-primary/90 hover:from-primary/90 hover:to-primary hover:scale-105 transition-all duration-300 flex items-center",
-                    (feedbackExpanded || feedbackHover) ? "px-6 gap-2 justify-start" : "w-14 px-0 justify-center"
+                    "rounded-full shadow-2xl shadow-primary/30 h-14 bg-gradient-to-br from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300 flex items-center pointer-events-auto",
+                    (feedbackExpanded || feedbackHover) && !isDragging ? "px-6 gap-2 justify-start hover:scale-105" : "w-14 px-0 justify-center"
                   )}
+                  disabled={isDragging}
                 >
                   <MessageSquare className={cn("h-5 w-5 shrink-0", !(feedbackExpanded || feedbackHover) && "mx-auto")} />
                   <span

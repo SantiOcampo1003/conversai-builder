@@ -189,9 +189,9 @@ export default function AgentEditor() {
       </header>
 
       {/* ── Body ── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
         {/* Sidebar - Fixed, no scroll */}
-        <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col py-4 gap-1 px-2 overflow-y-auto">
+        <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col py-4 gap-1 px-2 h-full overflow-hidden">
           {SECTIONS.map(({ id, label, icon: Icon, description }) => (
             <button
               key={id}
@@ -216,7 +216,7 @@ export default function AgentEditor() {
         </aside>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-8 h-full">
           <div className="max-w-2xl mx-auto">
             <div className="mb-6">
               <h1 className="text-xl font-bold text-foreground">{activeItem.label}</h1>
