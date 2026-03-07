@@ -1,0 +1,949 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-tokens",
+              "leftValue": "={{ Number($('Get Agent Data').first().json.available_tokens) }}",
+              "rightValue": 500,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "cond-active",
+              "leftValue": "={{ $('Get Agent Data').first().json.tokens_active }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        1056
+      ],
+      "id": "73327052-cf31-4176-8dde-bceacecc8100",
+      "name": "Has Tokens?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "output",
+              "value": "Necesitas recargar tokens para continuar la conversación. Escríbenos por WhatsApp para recargar. 📱",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        608,
+        848
+      ],
+      "id": "31dcf8f9-7209-4deb-ac4f-de262b6fbb5f",
+      "name": "Set Recarga Message"
+    },
+    {
+      "parameters": {
+        "jsCode": "const buildPrompt = $('Build Prompt').first().json;\nconst aiOutput = $('AI Agent').first().json.output || '';\nconst systemPrompt = buildPrompt.systemPrompt || '';\nconst userMessage = buildPrompt.userMessage || '';\n\nconst totalChars = systemPrompt.length + userMessage.length + aiOutput.length;\nconst tokensUsed = Math.max(1, Math.ceil(totalChars / 4));\n\nreturn {\n  json: {\n    agentId: buildPrompt.agentId,\n    userId: buildPrompt.userId,\n    clientId: $('Get Agent Data').first().json.client_id,\n    tokensUsed,\n    output: aiOutput\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        1056
+      ],
+      "id": "9f09f8bd-43f5-4cff-a8bf-e1426003b840",
+      "name": "Calc Tokens Used"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE token_balances\nSET used_tokens = used_tokens + {{ $json.tokensUsed }},\n    updated_at = now()\nWHERE client_id = '{{ $json.clientId }}';\n\nINSERT INTO token_transactions (client_id, agent_id, type, tokens, description)\nVALUES (\n  '{{ $json.clientId }}',\n  '{{ $json.agentId }}',\n  'consumption',\n  -{{ $json.tokensUsed }},\n  'Consumo agente {{ $json.agentId }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1248,
+        1056
+      ],
+      "id": "715e6198-9827-4cf1-b517-f7eef370ffff",
+      "name": "Deduct Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "output",
+              "value": "={{ $('AI Agent').first().json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1696,
+        1056
+      ],
+      "id": "00a84c5e-7810-4e3a-81b8-fc58272dc6ba",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "agentId",
+              "value": "={{ $json.body.agentId }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "userId",
+              "value": "={{ $json.body.userId }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "userMessage",
+              "value": "={{ $json.body.messageText }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -320,
+        1056
+      ],
+      "id": "e2579527-2982-4325-8fee-89fc5d908076",
+      "name": "Normalize Webhook Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  a.agent_id,\n  a.client_id,\n  a.email,\n  a.business_name,\n  a.business_type,\n  a.business_category,\n  a.price_range,\n  a.products,\n  a.delivery,\n  a.payment_methods,\n  a.faqs,\n  a.objection_handling,\n  a.agent_personality,\n  a.required_info,\n  a.warranty,\n  a.payment_gateway,\n  a.payment_links,\n  a.custom_instructions,\n  COALESCE(tb.available_tokens, 0)::bigint AS available_tokens,\n  COALESCE(tb.is_active, true) AS tokens_active\nFROM agents a\nLEFT JOIN token_balances tb ON tb.client_id = a.client_id\nWHERE a.agent_id = '{{ $(\"Normalize Webhook Data\").item.json.agentId }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -96,
+        912
+      ],
+      "id": "d469386f-56ff-4c1d-b3c7-6c1ead4f4639",
+      "name": "Get Agent Data",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  COALESCE(\n    json_agg(\n      json_build_object(\n        'role', role,\n        'message', message,\n        'created_at', created_at\n      ) ORDER BY created_at ASC\n    ),\n    '[]'::json\n  ) as chat_history\nFROM chat_history\nWHERE agent_id = '{{ $(\"Normalize Webhook Data\").item.json.agentId }}'\n  AND user_id = '{{ $(\"Normalize Webhook Data\").item.json.userId }}'\nLIMIT 50;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -96,
+        1200
+      ],
+      "id": "2a4507cb-f663-4353-9ce0-6026f3012bbe",
+      "name": "Get Chat History",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        128,
+        1056
+      ],
+      "id": "b5d1b71f-60e4-4a08-8946-af4b5f2e5c27",
+      "name": "Merge Inputs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Acceso a datos por nodo\nconst agentData = $('Get Agent Data').first().json;\nconst webhookData = $('Normalize Webhook Data').first().json;\nconst chatHistoryData = $input.all().find(i => i.json.chat_history)?.json;\nconst chatHistory = chatHistoryData?.chat_history || [];\n\nconst userMessage = webhookData.userMessage;\nconst userId = webhookData.userId;\nconst agentId = agentData.agent_id;\nconst agent = agentData;\n\n// Construir historial\nlet conversationContext = '';\nif (chatHistory.length > 0) {\n  conversationContext = `\n🧠 ESTA ES LA CONVERSACIÓN QUE YA TUVISTE CON ESTE CLIENTE:\n\n${chatHistory.map((item, index) => {\n  const role = item.role === 'user' ? '👤 Cliente' : '🤖 Tú dijiste';\n  return `[Mensaje ${index + 1}] ${role}: \"${item.message}\"`;\n}).join('\\n')}\n\n⚠️ INSTRUCCIONES CRÍTICAS:\n1. Lee TODOS los mensajes anteriores antes de responder\n2. Si el cliente ya te dio información, NO la vuelvas a preguntar\n3. Usa la información de mensajes anteriores para dar contexto\n\n`;\n} else {\n  conversationContext = '\\n🆕 ESTA ES LA PRIMERA INTERACCIÓN CON ESTE CLIENTE\\n\\n';\n}\n\n// Formatear info del agente\nconst priceRange = agent.price_range;\nconst products = agent.products;\nconst paymentMethods = agent.payment_methods;\nconst faqs = agent.faqs;\nconst personality = agent.agent_personality;\n\nlet formattedProducts = '';\nif (products && products.length > 0) {\n  formattedProducts = products.map(p => {\n    let productInfo = `${p.name}: $${p.price}`;\n    if (p.description) productInfo += `\\n  ${p.description}`;\n    if (p.image_url) productInfo += `\\n  🖼️ Ver imagen: ${p.image_url}`;\n    return productInfo;\n  }).join('\\n\\n');\n}\n\nlet formattedPayments = paymentMethods?.length ? paymentMethods.join('; ') : '';\nlet formattedFaqs = faqs?.length ? faqs.map(f => `P: ${f.question}\\nR: ${f.answer}`).join('\\n\\n') : '';\nlet formattedTone = personality?.tone || 'amigable';\nlet formattedFormality = personality?.formality || 'tutear';\nlet formattedEmojis = personality?.useEmojis ? 'Sí, usa emojis' : 'No uses emojis';\nlet formattedCustomInstructions = agent.custom_instructions?.trim() || '';\n\nconst systemPrompt = `Eres un agente de ventas por WhatsApp para ${agent.business_name}.\n\n${conversationContext}\n\n=== INFORMACIÓN DEL NEGOCIO ===\nTipo: ${agent.business_type}\nCategoría: ${agent.business_category}\nRango de precios: $${priceRange?.from || 0} - $${priceRange?.to || 0} ${priceRange?.currency || 'USD'}\n\n=== PRODUCTOS/SERVICIOS ===\n${formattedProducts}\n\n=== FORMAS DE PAGO ===\n${formattedPayments}\n\n=== PREGUNTAS FRECUENTES ===\n${formattedFaqs}\n\n=== TU PERSONALIDAD ===\n- Tono: ${formattedTone}\n- Formalidad: ${formattedFormality}\n- Emojis: ${formattedEmojis}\n\n=== INSTRUCCIONES PRIORITARIAS ===\n${formattedCustomInstructions}\n\n=== REGLAS FINALES ===\n1. SIEMPRE lee el historial antes de responder\n2. NO repitas preguntas\n3. Máximo 3 líneas por mensaje\n4. Una pregunta a la vez\n\nResponde en español de forma natural como en WhatsApp.`;\n\nreturn {\n  systemPrompt,\n  userMessage,\n  userId,\n  agentId,\n  sessionId: `${agentId}_${userId}`\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        1056
+      ],
+      "id": "a624b79e-008f-4bb4-bddd-28e1b8bbdd97",
+      "name": "Build Prompt"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (agent_id, user_id, role, message)\nVALUES\n  (\n    '{{ $(\"Build Prompt\").first().json.agentId }}',\n    '{{ $(\"Build Prompt\").first().json.userId }}',\n    'user',\n    '{{ ($(\"Build Prompt\").first().json.userMessage || \"\").toString().replaceAll(\"'\",\"''\") }}'\n  ),\n  (\n    '{{ $(\"Build Prompt\").first().json.agentId }}',\n    '{{ $(\"Build Prompt\").first().json.userId }}',\n    'assistant',\n    '{{ ($(\"AI Agent\").first().json.output || \"\").toString().replaceAll(\"'\",\"''\") }}'\n  );",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1472,
+        1056
+      ],
+      "id": "bfe71fe9-390f-41e3-b0bb-e41829281382",
+      "name": "Save Chat History",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"output\": $json.output } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1920,
+        1056
+      ],
+      "id": "5615dfda-8481-4660-9543-83c01680dd89",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "agentId",
+              "value": "={{ $json.body.agentId }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "userId",
+              "value": "={{ $json.body.userId }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "userMessage",
+              "value": "={{ $json.body.messageText }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        1968
+      ],
+      "id": "ad8e7dc8-4190-4807-a759-c78a95663ca0",
+      "name": "Normalize Webhook Data1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  a.agent_id,\n  a.client_id,\n  a.email,\n  a.business_name,\n  a.business_type,\n  a.business_category,\n  a.price_range,\n  a.products,\n  a.delivery,\n  a.payment_methods,\n  a.faqs,\n  a.objection_handling,\n  a.agent_personality,\n  a.required_info,\n  a.warranty,\n  a.payment_gateway,\n  a.payment_links,\n  a.custom_instructions,\n  COALESCE(tb.available_tokens, 0)::bigint AS available_tokens,\n  COALESCE(tb.is_active, true) AS tokens_active\nFROM agents a\nLEFT JOIN token_balances tb ON tb.client_id = a.client_id\nWHERE a.agent_id = '{{ $(\"Normalize Webhook Data1\").item.json.agentId }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        1824
+      ],
+      "id": "ff424a48-8459-435d-b6c2-1502bd2f376c",
+      "name": "Get Agent Data2",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  COALESCE(\n    json_agg(\n      json_build_object('role', role, 'message', message, 'created_at', created_at)\n      ORDER BY created_at ASC\n    ),\n    '[]'::json\n  ) as chat_history\nFROM chat_history\nWHERE agent_id = '{{ $(\"Normalize Webhook Data1\").item.json.agentId }}'\n  AND user_id = '{{ $(\"Normalize Webhook Data1\").item.json.userId }}'\nLIMIT 5;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        2112
+      ],
+      "id": "259afc63-8b8e-480a-83fa-f9c477e2e6f6",
+      "name": "Get Chat History2",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        544,
+        1968
+      ],
+      "id": "c92e1bcc-0d05-47dc-ba6c-51952ef73fa3",
+      "name": "Merge Inputs1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Acceso a datos por nodo\nconst agentData = $('Get Agent Data2').first().json;\nconst webhookData = $('Normalize Webhook Data1').first().json;\nconst chatHistoryData = $input.all().find(i => i.json.chat_history)?.json;\nconst chatHistory = chatHistoryData?.chat_history || [];\n\nconst userMessage = webhookData.userMessage;\nconst userId = webhookData.userId;\nconst agentId = agentData.agent_id;\nconst agent = agentData;\n\n// Construir historial\nlet conversationContext = '';\nif (chatHistory.length > 0) {\n  conversationContext = `\n🧠 ESTA ES LA CONVERSACIÓN QUE YA TUVISTE CON ESTE CLIENTE:\n\n${chatHistory.map((item, index) => {\n  const role = item.role === 'user' ? '👤 Cliente' : '🤖 Tú dijiste';\n  return `[Mensaje ${index + 1}] ${role}: \"${item.message}\"`;\n}).join('\\n')}\n\n⚠️ INSTRUCCIONES CRÍTICAS:\n1. Lee TODOS los mensajes anteriores antes de responder\n2. Si el cliente ya te dio información, NO la vuelvas a preguntar\n3. Usa la información de mensajes anteriores para dar contexto\n\n`;\n} else {\n  conversationContext = '\\n🆕 ESTA ES LA PRIMERA INTERACCIÓN CON ESTE CLIENTE\\n\\n';\n}\n\n// Formatear info del agente\nconst priceRange = agent.price_range;\nconst products = agent.products;\nconst paymentMethods = agent.payment_methods;\nconst faqs = agent.faqs;\nconst personality = agent.agent_personality;\n\nlet formattedProducts = '';\nif (products && products.length > 0) {\n  formattedProducts = products.map(p => {\n    let productInfo = `${p.name}: $${p.price}`;\n    if (p.description) productInfo += `\\n  ${p.description}`;\n    if (p.image_url) productInfo += `\\n  🖼️ Ver imagen: ${p.image_url}`;\n    return productInfo;\n  }).join('\\n\\n');\n}\n\nlet formattedPayments = paymentMethods?.length ? paymentMethods.join('; ') : '';\nlet formattedFaqs = faqs?.length ? faqs.map(f => `P: ${f.question}\\nR: ${f.answer}`).join('\\n\\n') : '';\nlet formattedTone = personality?.tone || 'amigable';\nlet formattedFormality = personality?.formality || 'tutear';\nlet formattedEmojis = personality?.useEmojis ? 'Sí, usa emojis' : 'No uses emojis';\nlet formattedCustomInstructions = agent.custom_instructions?.trim() || '';\n\nconst systemPrompt = `Eres un agente de ventas por WhatsApp para ${agent.business_name}.\n\n${conversationContext}\n\n=== INFORMACIÓN DEL NEGOCIO ===\nTipo: ${agent.business_type}\nCategoría: ${agent.business_category}\nRango de precios: $${priceRange?.from || 0} - $${priceRange?.to || 0} ${priceRange?.currency || 'USD'}\n\n=== PRODUCTOS/SERVICIOS ===\n${formattedProducts}\n\n=== FORMAS DE PAGO ===\n${formattedPayments}\n\n=== PREGUNTAS FRECUENTES ===\n${formattedFaqs}\n\n=== TU PERSONALIDAD ===\n- Tono: ${formattedTone}\n- Formalidad: ${formattedFormality}\n- Emojis: ${formattedEmojis}\n\n=== INSTRUCCIONES PRIORITARIAS ===\n${formattedCustomInstructions}\n\n=== REGLAS FINALES ===\n1. SIEMPRE lee el historial antes de responder\n2. NO repitas preguntas\n3. Máximo 3 líneas por mensaje\n4. Una pregunta a la vez\n\nResponde en español de forma natural como en WhatsApp.`;\n\nreturn {\n  systemPrompt,\n  userMessage,\n  userId,\n  agentId,\n  sessionId: `${agentId}_${userId}`\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        1968
+      ],
+      "id": "6784a410-9170-48b0-a9e8-7ef245d5a476",
+      "name": "Build Prompt2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-5', messages: [{ role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userMessage }] } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1216,
+        1968
+      ],
+      "id": "5eb25c90-4f1d-4df7-b7f0-a8379d847177",
+      "name": "OpenAI Chat API",
+      "credentials": {
+        "openAiApi": {
+          "id": "oQ7KwqYp5Twkddfe",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_history (agent_id, user_id, role, message)\nVALUES\n  (\n    '{{ $(\"Build Prompt2\").first().json.agentId }}',\n    '{{ $(\"Build Prompt2\").first().json.userId }}',\n    'user',\n    '{{ ($(\"Build Prompt2\").first().json.userMessage || \"\").toString().replaceAll(\"'\",\"''\") }}'\n  ),\n  (\n    '{{ $(\"Build Prompt2\").first().json.agentId }}',\n    '{{ $(\"Build Prompt2\").first().json.userId }}',\n    'assistant',\n    '{{ $('Calc Tokens Used1').item.json.output }}'\n  );",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1888,
+        1968
+      ],
+      "id": "530f22f0-268d-4a29-bdbf-644a3928d62e",
+      "name": "Save Chat History2",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"output\": $json.output } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2336,
+        1968
+      ],
+      "id": "4ce91421-5855-4213-bb2b-c122486dafee",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-tokens",
+              "leftValue": "={{ Number($('Get Agent Data2').first().json.available_tokens) }}",
+              "rightValue": 500,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "cond-active",
+              "leftValue": "={{ $('Get Agent Data2').first().json.tokens_active }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        768,
+        1968
+      ],
+      "id": "e9a32e7a-09a2-446c-b0c1-1446bd8a20dd",
+      "name": "Has Tokens?1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "output",
+              "value": "Necesitas recargar tokens para continuar la conversación. Escríbenos por WhatsApp para recargar. 📱",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        992,
+        1824
+      ],
+      "id": "6fec1c3d-cd7a-4dda-aa1a-c11bb3f8d8ff",
+      "name": "Set Recarga Message1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lee usage real de la API de OpenAI (HTTP Request)\nconst buildPrompt = $('Build Prompt2').first().json;\nconst agentData = $('Get Agent Data2').first().json;\nconst response = $input.first().json;\n\nconst aiOutput = response.choices?.[0]?.message?.content || '';\nconst tokensUsed = response.usage?.total_tokens ?? Math.max(1, Math.ceil(\n  ((buildPrompt.systemPrompt?.length || 0) + (buildPrompt.userMessage?.length || 0) + aiOutput.length) / 4\n));\n\nreturn {\n  json: {\n    agentId: buildPrompt.agentId,\n    userId: buildPrompt.userId,\n    clientId: agentData.client_id,\n    tokensUsed,\n    output: aiOutput\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        1968
+      ],
+      "id": "945a8158-acb6-4226-97b2-ff3d4d3fa4f7",
+      "name": "Calc Tokens Used1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE token_balances\nSET used_tokens = used_tokens + {{ $json.tokensUsed }},\n    updated_at = now()\nWHERE client_id = '{{ $json.clientId }}';\n\nINSERT INTO token_transactions (client_id, agent_id, type, tokens, description)\nVALUES (\n  '{{ $json.clientId }}',\n  '{{ $json.agentId }}',\n  'consumption',\n  -{{ $json.tokensUsed }},\n  'Consumo agente {{ $json.agentId }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1664,
+        1968
+      ],
+      "id": "e070ce2f-2f46-4edb-a924-8489c3d16540",
+      "name": "Deduct Tokens1",
+      "credentials": {
+        "postgres": {
+          "id": "Je18rGNMYCX6q9HK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "output",
+              "value": "={{ $('Calc Tokens Used1').first().json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2112,
+        1968
+      ],
+      "id": "12e3892d-6cf4-4e3d-9972-068a4343ef30",
+      "name": "Format Response1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        1408
+      ],
+      "id": "f059117c-1523-4c92-a11d-25b64e59ac48",
+      "name": "OpenAI Chat Model1",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "oQ7KwqYp5Twkddfe",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "={{ $json.systemPrompt }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        720,
+        1216
+      ],
+      "id": "29f622f4-c9d9-49ca-8c2b-76ab75fcb198",
+      "name": "AI Agent",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-message-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        2096
+      ],
+      "id": "62a24c41-ab8e-46ed-8ae9-c6bea5232e9e",
+      "name": "Webhook",
+      "webhookId": "f54c48dc-a9e5-4606-bb34-520c97a48d84"
+    }
+  ],
+  "connections": {
+    "Has Tokens?": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Recarga Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Recarga Message": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calc Tokens Used": {
+      "main": [
+        [
+          {
+            "node": "Deduct Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduct Tokens": {
+      "main": [
+        [
+          {
+            "node": "Save Chat History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Get Chat History",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Agent Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Agent Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Chat History": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Inputs": {
+      "main": [
+        [
+          {
+            "node": "Has Tokens?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Chat History": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Data1": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs1",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Get Chat History2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Agent Data2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Agent Data2": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Chat History2": {
+      "main": [
+        [
+          {
+            "node": "Merge Inputs1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Inputs1": {
+      "main": [
+        [
+          {
+            "node": "Has Tokens?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt2": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat API": {
+      "main": [
+        [
+          {
+            "node": "Calc Tokens Used1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Chat History2": {
+      "main": [
+        [
+          {
+            "node": "Format Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Tokens?1": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Recarga Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Recarga Message1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calc Tokens Used1": {
+      "main": [
+        [
+          {
+            "node": "Deduct Tokens1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduct Tokens1": {
+      "main": [
+        [
+          {
+            "node": "Save Chat History2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Calc Tokens Used",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a55b6f1a889447664338719c09faeaf8f98b041a97ec5fbd212ff4a1fc79f7b"
+  }
+}

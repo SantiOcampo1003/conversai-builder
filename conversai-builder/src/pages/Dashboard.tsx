@@ -79,7 +79,18 @@ export default function Dashboard() {
   const [clientName, setClientName] = useState<string | null>(null)
   const [feedbackExpanded, setFeedbackExpanded] = useState(true)
   const [feedbackHover, setFeedbackHover] = useState(false)
-  const [feedbackPosition, setFeedbackPosition] = useState({ bottom: 24, right: 24 })
+  const [feedbackPosition, setFeedbackPosition] = useState(() => {
+    // Cargar posición guardada desde localStorage
+    const saved = localStorage.getItem('feedback-position')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        return { bottom: 24, right: 24 }
+      }
+    }
+    return { bottom: 24, right: 24 }
+  })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const { isSuperAdmin, isLoading: loadingSuperAdmin } = useIsSuperAdmin()
@@ -98,14 +109,20 @@ export default function Dashboard() {
     const handleMouseMove = (e: MouseEvent) => {
       e.preventDefault()
 
-      // Calcular el movimiento desde la posición inicial
-      const deltaX = dragStart.x - e.clientX
+      // Calcular solo el movimiento vertical (Y)
       const deltaY = dragStart.y - e.clientY // Invertido porque bottom crece hacia arriba
 
-      setFeedbackPosition(prev => ({
-        bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
-        right: Math.max(24, Math.min(200, prev.right + deltaX)),
-      }))
+      setFeedbackPosition(prev => {
+        const newPosition = {
+          bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
+          right: prev.right, // Mantener right fijo (no mover horizontalmente)
+        }
+
+        // Guardar en localStorage
+        localStorage.setItem('feedback-position', JSON.stringify(newPosition))
+
+        return newPosition
+      })
 
       setDragStart({ x: e.clientX, y: e.clientY })
     }

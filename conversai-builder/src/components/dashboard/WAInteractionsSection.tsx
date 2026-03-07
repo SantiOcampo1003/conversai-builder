@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
@@ -63,6 +63,12 @@ export function WAInteractionsSection() {
   const [totalConversations, setTotalConversations] = useState(0)
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Ref para el contenedor de mensajes (scroll)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // Key para sessionStorage
+  const STORAGE_KEY = 'wa-interactions-state'
+
   // 1. Cargar agentes del cliente
   useEffect(() => {
     if (!user || !clientId || loadingClientId) return
@@ -81,10 +87,44 @@ export function WAInteractionsSection() {
     fetchAgents()
   }, [user, clientId, loadingClientId])
 
+  // Guardar estado en sessionStorage
+  const saveStateToStorage = useCallback((conversation: Conversation | null, scrollPos: number) => {
+    if (!conversation) {
+      sessionStorage.removeItem(STORAGE_KEY)
+      return
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      conversation,
+      scrollPosition: scrollPos,
+      timestamp: Date.now()
+    }))
+  }, [])
+
+  // Restaurar estado desde sessionStorage
+  const restoreStateFromStorage = useCallback(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY)
+      if (!saved) return null
+
+      const { conversation, scrollPosition, timestamp } = JSON.parse(saved)
+
+      // Validar que no sea muy antiguo (más de 1 hora)
+      const oneHour = 60 * 60 * 1000
+      if (Date.now() - timestamp > oneHour) {
+        sessionStorage.removeItem(STORAGE_KEY)
+        return null
+      }
+
+      return { conversation, scrollPosition }
+    } catch {
+      return null
+    }
+  }, [])
+
   const fetchConversations = useCallback(async () => {
     if (!user || loadingAgents) return
       setLoadingConversations(true)
-      setSelectedConversation(null)
+      // No resetear selectedConversation aquí, lo haremos después de restaurar el estado
       setMessages([])
 
       const agentIds = selectedAgent === 'all'
@@ -146,7 +186,19 @@ export function WAInteractionsSection() {
       setConversations(convList.slice(0, PAGE_SIZE))
       setPage(0)
       setLoadingConversations(false)
-  }, [user, agents, selectedAgent, search, loadingAgents])
+
+      // Restaurar conversación seleccionada si existe en el estado guardado
+      const savedState = restoreStateFromStorage()
+      if (savedState?.conversation) {
+        const found = convList.find(
+          c => c.user_id === savedState.conversation.user_id &&
+               c.agent_id === savedState.conversation.agent_id
+        )
+        if (found) {
+          setSelectedConversation(found)
+        }
+      }
+  }, [user, agents, selectedAgent, search, loadingAgents, restoreStateFromStorage])
 
   useEffect(() => {
     fetchConversations()
@@ -177,6 +229,48 @@ export function WAInteractionsSection() {
     }
     fetchMessages()
   }, [selectedConversation])
+
+  // Restaurar posición del scroll cuando se cargan los mensajes
+  useEffect(() => {
+    if (!messages.length || loadingMessages) return
+
+    const savedState = restoreStateFromStorage()
+    if (savedState?.scrollPosition && messagesContainerRef.current) {
+      // Usar setTimeout para asegurar que el DOM esté renderizado
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = savedState.scrollPosition
+        }
+      }, 50)
+    }
+  }, [messages, loadingMessages, restoreStateFromStorage])
+
+  // Guardar estado cuando cambia la conversación seleccionada o se hace scroll
+  useEffect(() => {
+    if (!selectedConversation) return
+
+    // Guardar estado inicial
+    saveStateToStorage(selectedConversation, 0)
+
+    // Función para guardar scroll
+    const handleScroll = () => {
+      if (messagesContainerRef.current) {
+        saveStateToStorage(selectedConversation, messagesContainerRef.current.scrollTop)
+      }
+    }
+
+    // Agregar listener al contenedor de mensajes
+    const container = messagesContainerRef.current
+    if (container) {
+      container.addEventListener('scroll', handleScroll)
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('scroll', handleScroll)
+      }
+    }
+  }, [selectedConversation, saveStateToStorage])
 
   // 4. Cargar información del lead (customer info)
   useEffect(() => {
@@ -399,6 +493,7 @@ export function WAInteractionsSection() {
 
               {/* Mensajes */}
               <div
+                ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto p-4 flex flex-col gap-2"
                 style={{
                   background: 'linear-gradient(to bottom, hsl(var(--background)), hsl(var(--secondary)/0.3))'
