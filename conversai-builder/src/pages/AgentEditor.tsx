@@ -167,8 +167,7 @@ export default function AgentEditor() {
   const activeItem = SECTIONS.find(s => s.id === activeSection)!
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* ── Top bar ── */}
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <header className="h-14 border-b border-border bg-card/50 backdrop-blur-sm flex items-center gap-4 px-6 shrink-0">
         <Button
           variant="ghost"
@@ -188,10 +187,8 @@ export default function AgentEditor() {
         </div>
       </header>
 
-      {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar - Fixed, no scroll */}
-        <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col py-4 gap-1 px-2 h-full overflow-hidden">
+        <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col py-4 gap-1 px-2 overflow-hidden">
           {SECTIONS.map(({ id, label, icon: Icon, description }) => (
             <button
               key={id}
@@ -215,9 +212,8 @@ export default function AgentEditor() {
           ))}
         </aside>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto p-8 h-full">
-          <div className="max-w-2xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-2xl mx-auto pb-8">
             <div className="mb-6">
               <h1 className="text-xl font-bold text-foreground">{activeItem.label}</h1>
               <p className="text-muted-foreground text-sm mt-0.5">{activeItem.description}</p>
