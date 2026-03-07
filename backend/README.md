@@ -48,6 +48,13 @@ SUPABASE_ANON_KEY=eyJxxx...
 
 # OpenAI
 OPENAI_API_KEY=sk-proj-xxx...
+
+# Token Pricing
+TOKEN_MARKUP_PERCENTAGE=100  # Markup sobre tokens de OpenAI (100 = cobrar el doble)
+
+# Agent Execution Limits (prevenir loops infinitos y sobrecostos)
+AGENT_MAX_ITERATIONS=2        # Máximo número de iteraciones con tools
+AGENT_MAX_EXECUTION_TIME=30000 # Timeout en milisegundos (30s)
 ```
 
 ## 🚀 Ejecución
@@ -122,7 +129,8 @@ npm run test:cov
 3. LangchainService ejecuta el agente:
    - Construye el prompt (sin historial embebido)
    - Convierte historial a formato LangChain
-   - Ejecuta chain con OpenAI
+   - Decide entre chain simple o agent con tools
+   - Ejecuta con OpenAI
 4. ChatService guarda respuesta y descuenta tokens
 5. Retorna respuesta al cliente
 ```
@@ -133,6 +141,198 @@ npm run test:cov
 - **LangchainModule**: Lógica del agente IA
 - **DatabaseModule**: Cliente Supabase (Global)
 - **ConfigModule**: Variables de entorno (Global)
+
+---
+
+## 🤖 LangChain Agent Execution
+
+El sistema utiliza **dos flujos diferentes** dependiendo de si el agente tiene tools configuradas o no:
+
+### 1️⃣ **Agente CON Tools** (ReAct Agent)
+
+Cuando el agente tiene `required_info` configurado (u otras tools en el futuro), se usa un **AgentExecutor** con loop automático:
+
+```typescript
+// Ejemplo con 1 o más tools
+const tools = [];
+
+// Tool 1: Save customer info
+if (agent.required_info && agent.required_info.length > 0) {
+  tools.push(createCustomerInfoTool(...));
+}
+
+// Tool 2: Check inventory (futuro)
+if (agent.has_inventory) {
+  tools.push(createInventoryTool(...));
+}
+
+// Tool 3: Payment links (futuro)
+if (agent.payment_gateway) {
+  tools.push(createPaymentTool(...));
+}
+
+// Crear agente con tools
+const customAgent = createAgent({
+  model,
+  tools,  // Array dinámico de tools
+  systemPrompt: businessInfo,
+});
+
+// Ejecutar con límite de iteraciones
+const result = await customAgent.invoke({
+  messages: [...messages, new HumanMessage(userMessage)],
+}, {
+  callbacks: [tokenCounter],
+  recursionLimit: maxIterations, // ⚠️ Límite de seguridad
+});
+```
+
+#### ¿Cómo funciona el loop de ReAct?
+
+```
+Iteración 1:
+  Modelo → Decide llamar tool "save_customer_info"
+  Tool → Guarda datos del cliente en BD
+
+Iteración 2:
+  Modelo → Recibe confirmación de la tool
+  Modelo → Genera respuesta final al usuario
+
+FIN (2 iteraciones)
+```
+
+**Límite de iteraciones (`recursionLimit`):**
+- Previene loops infinitos que generan sobrecostos
+- Default: `AGENT_MAX_ITERATIONS=2`
+- El agente **decide dinámicamente** qué tool usar (o ninguna)
+
+---
+
+### 2️⃣ **Agente SIN Tools** (Chain Simple)
+
+Cuando el agente **NO tiene tools**, se usa un chain directo:
+
+```typescript
+const prompt = ChatPromptTemplate.fromMessages([
+  ['system', businessInfo],
+  new MessagesPlaceholder('chat_history'),
+  ['human', '{input}'],
+]);
+
+const chain = prompt.pipe(model);
+
+const response = await chain.invoke({
+  chat_history: messages,
+  input: userMessage,
+}, {
+  callbacks: [tokenCounter],
+});
+```
+
+#### ¿Por qué usar chain simple?
+
+- **No hay loop**: Solo `prompt → modelo → respuesta`
+- **Más rápido**: Menos overhead
+- **Más económico**: Una sola llamada al modelo
+
+---
+
+### 📊 Comparación
+
+| Característica | Chain Simple | Agent con Tools |
+|---------------|--------------|-----------------|
+| **Tools** | ❌ No | ✅ Sí (dinámico) |
+| **Iteraciones** | 1 | 1 a N (con límite) |
+| **Llamadas API** | 1 | Variable |
+| **Costo** | Bajo | Variable |
+| **Uso** | Conversación estándar | Tareas con acciones (guardar datos, consultar BD, etc.) |
+
+---
+
+## 🛡️ Protección contra Sobrecostos
+
+### Límites configurables:
+
+```bash
+# .env
+AGENT_MAX_ITERATIONS=2         # Máximo de iteraciones con tools
+AGENT_MAX_EXECUTION_TIME=30000 # Timeout en ms
+```
+
+### ¿Qué pasa si se alcanza el límite?
+
+```typescript
+// Si llega a AGENT_MAX_ITERATIONS iteraciones:
+// El agente retorna un mensaje de error controlado
+return {
+  content: 'Disculpa, estoy procesando tu solicitud pero está tomando más tiempo del esperado...',
+  tokensUsed: tokenCounter.totalTokens,
+};
+```
+
+### Monitoreo:
+
+Los logs muestran las iteraciones en tiempo real:
+
+```
+🚀 Ejecutando agent con tools (max iteraciones: 2)...
+🔄 Iteración 1/2
+🔧 Modelo llamó a tool: save_customer_info
+✅ Tool ejecutada: {"success": true}
+🔄 Iteración 2/2
+✅ Respuesta generada: Perfecto, he guardado tu información...
+📊 Tokens totales: 1245
+```
+
+---
+
+## 🔧 Agregar Nuevas Tools
+
+Para agregar una nueva tool al sistema:
+
+1. **Crear la tool** en `src/langchain/`:
+```typescript
+// ejemplo: inventory.tool.ts
+export function createInventoryTool(db, agentId) {
+  return new DynamicStructuredTool({
+    name: 'check_inventory',
+    description: 'Verifica disponibilidad de productos',
+    schema: z.object({
+      productId: z.string(),
+      quantity: z.number(),
+    }),
+    func: async ({ productId, quantity }) => {
+      // Lógica para consultar inventario
+      const available = await db.checkStock(productId);
+      return { available, productId, quantity };
+    },
+  });
+}
+```
+
+2. **Agregar al agente** en `langchain.service.ts`:
+```typescript
+const tools = [];
+
+// Tool existente
+if (agent.required_info?.length > 0) {
+  tools.push(createCustomerInfoTool(...));
+}
+
+// Nueva tool
+if (agent.has_inventory) {
+  tools.push(createInventoryTool(this.databaseService, agent.agent_id));
+}
+
+// El agente decide dinámicamente cuál usar
+const customAgent = createAgent({
+  model,
+  tools, // Array dinámico
+  systemPrompt: businessInfo,
+});
+```
+
+3. **El modelo decide automáticamente** cuándo y cómo usar cada tool basado en el contexto de la conversación.
 
 ## 🎯 Próximas Features
 

@@ -52,6 +52,11 @@ export class LangchainService {
       temperature: agent.temperature ?? 0.7,
       maxTokens: agent.max_tokens ?? 500,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
+      // Habilitar llamadas paralelas a tools (reduce iteraciones)
+      // Soportado por: gpt-4-turbo, gpt-4o, gpt-3.5-turbo (Nov 2023+)
+      modelKwargs: {
+        parallel_tool_calls: true, // El modelo puede llamar múltiples tools a la vez
+      },
     });
 
     // 4. Token tracking
@@ -70,14 +75,17 @@ export class LangchainService {
         agent.required_info,
       );
 
-      // Crear react agent con nuevo createAgent de langchain
+      // Configurar límite de iteraciones para evitar loops infinitos y sobrecostos
+      const maxIterations = this.configService.get<number>('AGENT_MAX_ITERATIONS', 5);
+
+      // Crear react agent con createAgent de langchain
       const customAgent = createAgent({
         model,
         tools: [customerInfoTool],
         systemPrompt: businessInfo, // System prompt
       });
 
-      console.log('🚀 Ejecutando agent con tools...');
+      console.log(`🚀 Ejecutando agent con tools (max iteraciones: ${maxIterations}, parallel_tool_calls: enabled)...`);
 
       const result = await customAgent.invoke(
         {
@@ -85,6 +93,7 @@ export class LangchainService {
         },
         {
           callbacks: [tokenCounter],
+          recursionLimit: maxIterations, // Límite de iteraciones para evitar loops infinitos
         },
       );
 
@@ -92,8 +101,18 @@ export class LangchainService {
       const lastMessage = result.messages[result.messages.length - 1];
       const responseText = lastMessage.content as string;
 
+      // Contar cuántas iteraciones y tool calls se hicieron
+      const toolCallMessages = result.messages.filter(
+        (msg: any) => msg.tool_calls && msg.tool_calls.length > 0
+      );
+      const totalToolCalls = toolCallMessages.reduce(
+        (sum: number, msg: any) => sum + (msg.tool_calls?.length || 0),
+        0
+      );
+
       console.log(`✅ Respuesta generada: ${responseText.substring(0, 50)}...`);
       console.log(`📊 Tokens totales: ${tokenCounter.totalTokens}`);
+      console.log(`🔧 Tool calls ejecutadas: ${totalToolCalls} en ${Math.ceil(result.messages.length / 2)} iteraciones`);
 
       return {
         content: responseText,
