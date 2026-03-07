@@ -15,7 +15,7 @@ export class ChatService {
     private databaseService: DatabaseService,
     private langchainService: LangchainService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   async handleMessage(dto: ChatMessageDto): Promise<ChatResponseDto> {
     const { agentId, userId, messageText } = dto;
@@ -93,14 +93,15 @@ export class ChatService {
       .select('role, message, created_at')
       .eq('agent_id', agentId)
       .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(10); // Últimos x mensajes
+      .order('created_at', { ascending: false })
+      .limit(10);
 
     if (historyError) {
       console.error('❌ Error cargando historial:', historyError);
     }
 
-    const chatHistory = (history || []) as ChatHistoryEntry[];
+    // Invertir para tener orden cronológico (más viejo → más nuevo)
+    const chatHistory = ((history || []) as ChatHistoryEntry[]).reverse();
 
     console.log(`📚 Historial cargado: ${chatHistory.length} mensajes`);
 
