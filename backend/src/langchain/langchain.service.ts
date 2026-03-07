@@ -70,9 +70,7 @@ export class LangchainService {
       );
 
       // Bind tool al modelo (OpenAI Function Calling)
-      model = model.bind({
-        tools: [customerInfoTool],
-      }) as ChatOpenAI;
+      model = model.bindTools([customerInfoTool]) as ChatOpenAI;
 
       console.log(
         `🔧 Tool habilitada: save_customer_info (campos: ${agent.required_info.join(', ')})`,
