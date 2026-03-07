@@ -2,11 +2,12 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
-import { MessageSquare, Loader2, Bot, User, Search, RefreshCw } from 'lucide-react'
+import { MessageSquare, Loader2, Bot, User, Search, RefreshCw, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 interface Agent {
   agent_id: string
@@ -29,6 +30,17 @@ interface Conversation {
   message_count: number
 }
 
+interface LeadInfo {
+  id: number
+  customer_id: string
+  agent_id: string
+  additional_fields: Record<string, any>
+  status: string
+  source: string
+  created_at: string
+  updated_at: string
+}
+
 const PAGE_SIZE = 50
 
 export function WAInteractionsSection() {
@@ -41,9 +53,11 @@ export function WAInteractionsSection() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [loadingConversations, setLoadingConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadingLead, setLoadingLead] = useState(false)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [totalConversations, setTotalConversations] = useState(0)
@@ -162,6 +176,28 @@ export function WAInteractionsSection() {
       setLoadingMessages(false)
     }
     fetchMessages()
+  }, [selectedConversation])
+
+  // 4. Cargar información del lead (customer info)
+  useEffect(() => {
+    if (!selectedConversation) {
+      setLeadInfo(null)
+      return
+    }
+
+    const fetchLeadInfo = async () => {
+      setLoadingLead(true)
+      const { data } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('agent_id', selectedConversation.agent_id)
+        .eq('customer_id', selectedConversation.user_id)
+        .maybeSingle()
+
+      setLeadInfo((data as LeadInfo) || null)
+      setLoadingLead(false)
+    }
+    fetchLeadInfo()
   }, [selectedConversation])
 
   const hasMore = conversations.length < totalConversations
@@ -319,17 +355,46 @@ export function WAInteractionsSection() {
           ) : (
             <>
               {/* Header conversación */}
-              <div className="px-5 py-3 border-b border-border bg-card/80 flex items-center gap-3 shrink-0">
-                <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
-                  <User className="h-4 w-4 text-primary" />
+              <div className="px-5 py-3 border-b border-border bg-card/80 shrink-0">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+                    <User className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{shortUserId(selectedConversation.user_id)}</p>
+                    <p className="text-xs text-primary/70">{selectedConversation.agent_name}</p>
+                  </div>
+                  <div className="ml-auto text-xs text-muted-foreground">
+                    {messages.length} mensajes
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{shortUserId(selectedConversation.user_id)}</p>
-                  <p className="text-xs text-primary/70">{selectedConversation.agent_name}</p>
-                </div>
-                <div className="ml-auto text-xs text-muted-foreground">
-                  {messages.length} mensajes
-                </div>
+
+                {/* Customer Info Badges */}
+                {loadingLead ? (
+                  <div className="flex gap-2">
+                    <div className="h-6 w-20 bg-secondary/50 rounded-full animate-pulse" />
+                    <div className="h-6 w-24 bg-secondary/50 rounded-full animate-pulse" />
+                  </div>
+                ) : leadInfo && leadInfo.additional_fields && Object.keys(leadInfo.additional_fields).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(leadInfo.additional_fields).map(([key, value]) => {
+                      if (!value || value === '') return null
+                      return (
+                        <Badge
+                          key={key}
+                          variant="secondary"
+                          className="text-xs font-normal gap-1.5 px-2.5 py-1"
+                        >
+                          <UserCircle className="h-3 w-3" />
+                          <span className="font-medium capitalize">{key}:</span>
+                          <span className="text-muted-foreground">{String(value)}</span>
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground/60 italic">Sin información adicional del cliente</p>
+                )}
               </div>
 
               {/* Mensajes */}

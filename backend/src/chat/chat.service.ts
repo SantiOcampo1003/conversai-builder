@@ -104,11 +104,12 @@ export class ChatService {
 
     console.log(`📚 Historial cargado: ${chatHistory.length} mensajes`);
 
-    // 4️⃣ Ejecutar agente de LangChain
+    // 4️⃣ Ejecutar agente de LangChain (con tools si está configurado)
     const { content, tokensUsed } = await this.langchainService.executeAgent(
       agent,
       chatHistory,
       messageText,
+      userId, // WhatsApp phone number para customer info tool
     );
 
     // Calcular tokens a cobrar (con markup configurable)
