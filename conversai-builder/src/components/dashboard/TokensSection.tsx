@@ -468,8 +468,53 @@ export function TokensSection() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex flex-col gap-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Tokens</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Gestiona tu balance y consumo de tokens
+          </p>
+        </div>
+
+        {/* Balance Cards Skeleton */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-secondary animate-pulse" />
+                <div className="h-4 w-32 bg-secondary rounded animate-pulse" />
+              </div>
+              <div className="h-9 w-24 bg-secondary rounded animate-pulse mb-2" />
+              <div className="h-3 w-20 bg-secondary/50 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs Skeleton */}
+        <div className="flex gap-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-10 w-32 bg-secondary rounded-lg animate-pulse" />
+          ))}
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-secondary animate-pulse" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-40 bg-secondary rounded animate-pulse" />
+                    <div className="h-3 w-24 bg-secondary/50 rounded animate-pulse" />
+                  </div>
+                </div>
+                <div className="h-6 w-20 bg-secondary rounded-full animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }

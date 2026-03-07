@@ -86,12 +86,29 @@ export function AgentsSection() {
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Agentes</h1>
-          <p className="text-muted-foreground text-sm mt-1">Tus agentes de ventas activos</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Agentes</h1>
+            <p className="text-muted-foreground text-sm mt-1">Tus agentes de ventas activos</p>
+          </div>
+          <div className="h-10 w-32 bg-secondary rounded-lg animate-pulse" />
         </div>
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-secondary rounded-xl animate-pulse shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="h-5 w-32 bg-secondary rounded animate-pulse mb-2" />
+                  <div className="h-4 w-24 bg-secondary/50 rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
+                <div className="h-4 w-28 bg-secondary/50 rounded animate-pulse" />
+                <div className="h-8 w-20 bg-secondary rounded-lg animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     )

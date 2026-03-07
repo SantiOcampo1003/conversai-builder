@@ -380,7 +380,29 @@ function TeamTab() {
     'agent-manager': 'Gestor de agentes',
   }
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <div className="h-5 w-24 bg-secondary rounded animate-pulse" />
+          </div>
+          <div className="divide-y divide-border">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-8 h-8 rounded-full bg-secondary animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-40 bg-secondary rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-secondary/50 rounded animate-pulse" />
+                </div>
+                <div className="h-6 w-20 bg-secondary rounded-full animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -654,7 +676,29 @@ function PermissionsTab() {
     view: 'Ver', edit: 'Editar', create: 'Crear', delete: 'Eliminar'
   }
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <div className="h-5 w-24 bg-secondary rounded animate-pulse" />
+          </div>
+          <div className="divide-y divide-border">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-8 h-8 rounded-full bg-secondary animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-40 bg-secondary rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-secondary/50 rounded animate-pulse" />
+                </div>
+                <div className="h-6 w-20 bg-secondary rounded-full animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (!isAdmin) {
     return (

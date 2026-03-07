@@ -56,8 +56,7 @@ export function WAInteractionsSection() {
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [loadingConversations, setLoadingConversations] = useState(false)
-  const [loadingMessages, setLoadingMessages] = useState(false)
-  const [loadingLead, setLoadingLead] = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [totalConversations, setTotalConversations] = useState(0)
@@ -123,9 +122,11 @@ export function WAInteractionsSection() {
 
   const fetchConversations = useCallback(async () => {
     if (!user || loadingAgents) return
-      setLoadingConversations(true)
-      // No resetear selectedConversation aquí, lo haremos después de restaurar el estado
-      setMessages([])
+      // Solo mostrar loading en la carga inicial, no en refrescos
+      if (isInitialLoad) {
+        setLoadingConversations(true)
+      }
+      // No limpiar mensajes ni conversación seleccionada durante refresh
 
       const agentIds = selectedAgent === 'all'
         ? agents.map(a => a.agent_id)
@@ -186,19 +187,22 @@ export function WAInteractionsSection() {
       setConversations(convList.slice(0, PAGE_SIZE))
       setPage(0)
       setLoadingConversations(false)
+      setIsInitialLoad(false)
 
-      // Restaurar conversación seleccionada si existe en el estado guardado
-      const savedState = restoreStateFromStorage()
-      if (savedState?.conversation) {
-        const found = convList.find(
-          c => c.user_id === savedState.conversation.user_id &&
-               c.agent_id === savedState.conversation.agent_id
-        )
-        if (found) {
-          setSelectedConversation(found)
+      // Restaurar conversación seleccionada solo en la carga inicial
+      if (isInitialLoad) {
+        const savedState = restoreStateFromStorage()
+        if (savedState?.conversation) {
+          const found = convList.find(
+            c => c.user_id === savedState.conversation.user_id &&
+                 c.agent_id === savedState.conversation.agent_id
+          )
+          if (found) {
+            setSelectedConversation(found)
+          }
         }
       }
-  }, [user, agents, selectedAgent, search, loadingAgents, restoreStateFromStorage])
+  }, [user, agents, selectedAgent, search, loadingAgents, restoreStateFromStorage, isInitialLoad])
 
   useEffect(() => {
     fetchConversations()
@@ -216,7 +220,7 @@ export function WAInteractionsSection() {
   useEffect(() => {
     if (!selectedConversation) return
     const fetchMessages = async () => {
-      setLoadingMessages(true)
+      // No mostrar loading, solo actualizar los mensajes silenciosamente
       const { data } = await supabase
         .from('chat_history')
         .select('id, role, message, created_at')
@@ -225,14 +229,13 @@ export function WAInteractionsSection() {
         .order('created_at', { ascending: true })
 
       setMessages((data as Message[]) || [])
-      setLoadingMessages(false)
     }
     fetchMessages()
   }, [selectedConversation])
 
   // Restaurar posición del scroll cuando se cargan los mensajes
   useEffect(() => {
-    if (!messages.length || loadingMessages) return
+    if (!messages.length) return
 
     const savedState = restoreStateFromStorage()
     if (savedState?.scrollPosition && messagesContainerRef.current) {
@@ -243,7 +246,7 @@ export function WAInteractionsSection() {
         }
       }, 50)
     }
-  }, [messages, loadingMessages, restoreStateFromStorage])
+  }, [messages, restoreStateFromStorage])
 
   // Guardar estado cuando cambia la conversación seleccionada o se hace scroll
   useEffect(() => {
@@ -280,7 +283,7 @@ export function WAInteractionsSection() {
     }
 
     const fetchLeadInfo = async () => {
-      setLoadingLead(true)
+      // No mostrar loading, actualizar silenciosamente
       const { data } = await supabase
         .from('leads')
         .select('*')
@@ -289,7 +292,6 @@ export function WAInteractionsSection() {
         .maybeSingle()
 
       setLeadInfo((data as LeadInfo) || null)
-      setLoadingLead(false)
     }
     fetchLeadInfo()
   }, [selectedConversation])
@@ -464,12 +466,7 @@ export function WAInteractionsSection() {
                 </div>
 
                 {/* Customer Info Badges */}
-                {loadingLead ? (
-                  <div className="flex gap-2">
-                    <div className="h-6 w-20 bg-secondary/50 rounded-full animate-pulse" />
-                    <div className="h-6 w-24 bg-secondary/50 rounded-full animate-pulse" />
-                  </div>
-                ) : leadInfo && leadInfo.additional_fields && Object.keys(leadInfo.additional_fields).length > 0 ? (
+                {leadInfo && leadInfo.additional_fields && Object.keys(leadInfo.additional_fields).length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(leadInfo.additional_fields).map(([key, value]) => {
                       if (!value || value === '') return null
@@ -499,9 +496,9 @@ export function WAInteractionsSection() {
                   background: 'linear-gradient(to bottom, hsl(var(--background)), hsl(var(--secondary)/0.3))'
                 }}
               >
-                {loadingMessages ? (
+                {messages.length === 0 ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">No hay mensajes</p>
                   </div>
                 ) : (
                   messages.map((msg) => (
