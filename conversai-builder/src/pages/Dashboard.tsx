@@ -79,6 +79,9 @@ export default function Dashboard() {
   const [clientName, setClientName] = useState<string | null>(null)
   const [feedbackExpanded, setFeedbackExpanded] = useState(true)
   const [feedbackHover, setFeedbackHover] = useState(false)
+  const [feedbackPosition, setFeedbackPosition] = useState({ bottom: 24, right: 24 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const { isSuperAdmin, isLoading: loadingSuperAdmin } = useIsSuperAdmin()
   const { clientId, isLoading: loadingClientId } = useClientContext()
   const [isImpersonating, setIsImpersonating] = useState(false)
@@ -476,11 +479,40 @@ export default function Dashboard() {
           )}
         </main>
 
-        {/* Floating Feedback Button */}
+        {/* Floating Feedback Button - Draggable */}
         <div
-          className="fixed bottom-6 right-6 z-50"
+          className="fixed z-50 cursor-move"
+          style={{
+            bottom: `${feedbackPosition.bottom}px`,
+            right: `${feedbackPosition.right}px`,
+          }}
           onMouseEnter={() => setFeedbackHover(true)}
           onMouseLeave={() => setFeedbackHover(false)}
+          onMouseDown={(e) => {
+            setIsDragging(true)
+            setDragStart({
+              x: e.clientX,
+              y: e.clientY,
+            })
+          }}
+          onMouseMove={(e) => {
+            if (!isDragging) return
+            e.preventDefault()
+            const deltaX = dragStart.x - e.clientX
+            const deltaY = e.clientY - dragStart.y
+
+            setFeedbackPosition(prev => ({
+              bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
+              right: Math.max(24, Math.min(window.innerWidth - 200, prev.right + deltaX)),
+            }))
+
+            setDragStart({
+              x: e.clientX,
+              y: e.clientY,
+            })
+          }}
+          onMouseUp={() => setIsDragging(false)}
+          onMouseLeave={() => isDragging && setIsDragging(false)}
         >
           <div className="w-[152px] h-14 flex items-center justify-end">
             <FeedbackDialog
