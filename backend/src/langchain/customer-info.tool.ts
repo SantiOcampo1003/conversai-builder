@@ -57,12 +57,30 @@ export function createCustomerInfoTool(
   return new DynamicStructuredTool({
     name: 'save_customer_info',
     description: `Guarda o actualiza información del cliente cuando la detectes en la conversación.
-Campos disponibles según configuración del agente: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
-Usa esta herramienta SOLO cuando el cliente proporcione información personal clara y verificable.
-Ejemplos:
-- Cliente: "Mi nombre es Juan Pérez" → save_customer_info({nombre: "Juan Pérez"})
-- Cliente: "Vivo en Medellín" → save_customer_info({ciudad: "Medellín"})
-- Cliente: "Tengo un presupuesto de 5 millones" → save_customer_info({presupuesto: "5 millones"})`,
+Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
+
+⚠️ USA ESTA HERRAMIENTA SOLO CUANDO:
+1. El cliente EXPLÍCITAMENTE proporcione información personal nueva (nombre, email, teléfono, dirección, etc.)
+2. La información sea clara, específica y verificable
+3. Haya contenido REAL para guardar
+
+❌ NO USES ESTA HERRAMIENTA SI:
+- El mensaje es un saludo simple ("Hola", "Qué tal", "Buenas")
+- El mensaje es una respuesta corta ("Sí", "No", "Ok", "Gracias")
+- El cliente hace una pregunta sin dar información personal
+- El cliente solicita información sobre productos/servicios
+- No hay datos personales nuevos en el mensaje
+
+✅ Ejemplos CORRECTOS de cuándo usar:
+- "Mi nombre es Juan Pérez" → save_customer_info({nombre: "Juan Pérez"})
+- "Vivo en Medellín, Calle 10 #20-30" → save_customer_info({ciudad: "Medellín", direccion: "Calle 10 #20-30"})
+- "Mi email es juan@test.com y mi teléfono es 300123456" → save_customer_info({email: "juan@test.com", telefono: "300123456"})
+
+❌ Ejemplos INCORRECTOS (NO usar la herramienta):
+- "Hola" → Solo responde el saludo
+- "Sí" / "No" → Continúa la conversación
+- "¿Cuál es el precio?" → Responde sin llamar la herramienta
+- "Gracias" → Solo responde cortésmente`,
     schema,
     func: async (input: Record<string, any>) => {
       try {

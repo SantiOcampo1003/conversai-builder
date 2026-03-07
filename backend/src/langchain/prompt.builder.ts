@@ -49,6 +49,16 @@ export function buildBusinessInfo(agent: Agent): string {
   // Reglas internas del sistema (incluye reglas finales + restricciones)
   const internalInstructions = agent.internal_custom_instructions?.trim() || '';
 
+  // Instrucciones sobre tools (si tiene required_info configurado)
+  const toolInstructions = agent.required_info && agent.required_info.length > 0
+    ? `\n=== USO DE HERRAMIENTAS ===
+Tienes acceso a una herramienta para guardar información del cliente.
+⚠️ IMPORTANTE: Usa la herramienta SOLO cuando el cliente proporcione información personal EXPLÍCITA (${agent.required_info.join(', ')}).
+❌ NO uses la herramienta para saludos simples, respuestas cortas ("Sí", "No", "Ok"), preguntas del cliente, o cuando NO haya datos personales nuevos.
+✅ Usa la herramienta cuando el cliente diga su nombre, email, teléfono, dirección u otra información personal.
+`
+    : '';
+
   return `Eres un agente de ventas por WhatsApp para ${agent.business_name}.
 
 === INFORMACIÓN DEL NEGOCIO ===
@@ -70,8 +80,8 @@ ${faqs}
 - Formalidad: ${formality}
 - Emojis: ${useEmojis}
 
-${customInstructions ? `=== INSTRUCCIONES PERSONALIZADAS ===\n${customInstructions}\n\n` : ''}
-
+${customInstructions ? `=== INSTRUCCIONES PERSONALIZADAS ===\n${customInstructions}\n` : ''}
+${toolInstructions}
 === REGLAS GENERALES ===
 ${internalInstructions}
 

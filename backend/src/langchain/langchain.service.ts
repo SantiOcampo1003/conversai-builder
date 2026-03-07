@@ -110,6 +110,18 @@ export class LangchainService {
         0
       );
 
+      // Log detallado de cada mensaje en el resultado
+      console.log(`📋 Desglose de iteraciones (${result.messages.length} mensajes):`);
+      result.messages.forEach((msg: any, idx: number) => {
+        const msgType = msg._getType ? msg._getType() : msg.constructor.name;
+        const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+        const content = typeof msg.content === 'string'
+          ? msg.content.substring(0, 80)
+          : JSON.stringify(msg.content).substring(0, 80);
+
+        console.log(`  ${idx + 1}. [${msgType}] ${hasToolCalls ? `🔧 Tool calls: ${msg.tool_calls.length}` : content}`);
+      });
+
       console.log(`✅ Respuesta generada: ${responseText.substring(0, 50)}...`);
       console.log(`📊 Tokens totales: ${tokenCounter.totalTokens}`);
       console.log(`🔧 Tool calls ejecutadas: ${totalToolCalls} en ${Math.ceil(result.messages.length / 2)} iteraciones`);
