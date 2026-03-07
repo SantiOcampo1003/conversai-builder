@@ -245,8 +245,14 @@ export const FlowFormSection = () => {
           payment_links: paymentGateway !== 'none' ? paymentLinks : {},
           custom_instructions: customInstructions
             .filter(i => i.text.trim())
-            .map((i, index) => `${index + 1}. ${i.text}`)
-            .join('\n'),
+            .map(i => ({ instruction: i.text, active: true })),
+          internal_custom_instructions: `1. Lee el historial de conversacion disponible en los mensajes anteriores
+2. Si el cliente ya dio informacion, NO la vuelvas a preguntar
+3. Usa informacion de mensajes previos para dar contexto
+4. Maximo 3 lineas por mensaje
+5. Una pregunta a la vez
+6. Responde en espanol de forma natural como en WhatsApp
+7. IMPORTANTE: Solo interaccion por chat. NO ofrecer llamadas telefonicas ni indicar que devolveras llamadas`,
         });
 
       if (agentError) {

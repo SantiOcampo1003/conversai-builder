@@ -1,0 +1,71 @@
+# ────────────────────────────────────────────────────────────────────────────
+# ConversAI Builder - Backend Docker Compose
+# For local development and testing
+# ────────────────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+  # ══════════════════════════════════════════════════════════════════════════
+  # Backend Service (NestJS + LangChain)
+  # ══════════════════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: conversai-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      # Server
+      - PORT=3001
+      - NODE_ENV=production
+
+      # Supabase (replace with your values or use .env file)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Token Markup
+      - TOKEN_MARKUP_PERCENTAGE=${TOKEN_MARKUP_PERCENTAGE:-100}
+
+      # Optional: LangSmith
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-conversai-builder}
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/chat/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Networks (optional)
+# ══════════════════════════════════════════════════════════════════════════════
+networks:
+  default:
+    name: conversai-network

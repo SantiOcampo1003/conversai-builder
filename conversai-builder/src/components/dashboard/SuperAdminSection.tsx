@@ -329,13 +329,16 @@ export function SuperAdminSection() {
   // ── Gift Tokens Mutation ─────────────────────────────────────────────────
   const giftTokensMutation = useMutation({
     mutationFn: async ({ clientId, tokens, description }: { clientId: string; tokens: number; description: string }) => {
-      // Crear transacción de bonus
+      // Crear transacción de bonus (con columnas nuevas de tracking)
       const { data: transaction, error: txError } = await supabase
         .from('token_transactions')
         .insert([{
           client_id: clientId,
           type: 'bonus',
           tokens: tokens,
+          tokens_real: tokens, // Tokens regalados = tokens reales
+          tokens_charged: tokens, // Tokens cobrados = tokens reales (sin markup en regalos)
+          markup_percentage: 0, // No hay markup en tokens regalados
           description: description || 'Tokens de regalo del Super Admin',
           payment_status: 'completed',
         }])

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
+import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
@@ -44,7 +45,8 @@ interface Agent {
   agent_personality: { tone: string; useEmojis: boolean; formalityLevel: string } | null
   required_info: string[] | null
   warranty: string | null
-  custom_instructions: string[] | null
+  custom_instructions: { instruction: string; active: boolean }[] | null
+  internal_custom_instructions: string | null
   email: string | null
 }
 
@@ -97,6 +99,7 @@ export default function AgentEditor() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
+  const { isSuperAdmin } = useIsSuperAdmin()
 
   const [agent, setAgent]           = useState<Agent | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -225,7 +228,7 @@ export default function AgentEditor() {
             {activeSection === 'payments'    && <PaymentsSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'personality' && <PersonalitySection agent={agent} onSave={save} saving={saving} />}
-            {activeSection === 'advanced'    && <AdvancedSection    agent={agent} onSave={save} saving={saving} />}
+            {activeSection === 'advanced'    && <AdvancedSection    agent={agent} onSave={save} saving={saving} isSuperAdmin={isSuperAdmin} />}
           </div>
         </main>
       </div>
@@ -670,18 +673,23 @@ function PersonalitySection({ agent, onSave, saving }: { agent: Agent; onSave: (
 }
 
 // ── Section: Avanzado ─────────────────────────────────────────────────────────
-function AdvancedSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean; isSuperAdmin: boolean }) {
   const [reqInfo, setReqInfo]     = useState<string[]>(Array.isArray(agent.required_info) ? agent.required_info : [])
   const [warranty, setWarranty]   = useState(agent.warranty || '')
-  const [instructions, setInstr]  = useState<string[]>(Array.isArray(agent.custom_instructions) ? agent.custom_instructions : [])
+  const [instructions, setInstr]  = useState<{ instruction: string; active: boolean }[]>(
+    Array.isArray(agent.custom_instructions) ? agent.custom_instructions : []
+  )
+  const [internalInstructions, setInternalInstr] = useState(agent.internal_custom_instructions || '')
 
   const toggleInfo = (v: string) =>
     setReqInfo(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
 
-  const addInstr    = () => setInstr(prev => [...prev, ''])
+  const addInstr    = () => setInstr(prev => [...prev, { instruction: '', active: true }])
   const removeInstr = (i: number) => setInstr(prev => prev.filter((_, idx) => idx !== i))
   const updateInstr = (i: number, val: string) =>
-    setInstr(prev => prev.map((ins, idx) => idx === i ? val : ins))
+    setInstr(prev => prev.map((ins, idx) => idx === i ? { ...ins, instruction: val } : ins))
+  const toggleActive = (i: number) =>
+    setInstr(prev => prev.map((ins, idx) => idx === i ? { ...ins, active: !ins.active } : ins))
 
   return (
     <div className="flex flex-col gap-5">
@@ -718,18 +726,54 @@ function AdvancedSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
         />
       </div>
 
+      {isSuperAdmin && (
+        <div className="flex flex-col gap-1.5 p-4 bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-500/30 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Label className="text-amber-900 dark:text-amber-100">Instrucciones Internas del Sistema</Label>
+            <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+              Solo Super Admin
+            </span>
+          </div>
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            Reglas internas que siempre se aplican (restricciones de chat, formato, etc.)
+          </p>
+          <Textarea
+            value={internalInstructions}
+            onChange={e => setInternalInstr(e.target.value)}
+            placeholder="Reglas internas del sistema..."
+            rows={8}
+            className="resize-none font-mono text-sm"
+          />
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
         <Label>Instrucciones personalizadas</Label>
-        <p className="text-xs text-muted-foreground">Reglas o comportamientos específicos para el agente</p>
+        <p className="text-xs text-muted-foreground">Reglas o comportamientos específicos para el agente. Activa o desactiva cada instrucción según necesites.</p>
         {instructions.map((ins, i) => (
           <div key={i} className="flex gap-2 items-start">
-            <Textarea
-              value={ins}
-              onChange={e => updateInstr(i, e.target.value)}
-              placeholder="Ej: Nunca menciones a la competencia..."
-              rows={2}
-              className="flex-1 resize-none"
-            />
+            <div className="flex items-start pt-1">
+              <Checkbox
+                checked={ins.active}
+                onCheckedChange={() => toggleActive(i)}
+                className="mt-2"
+              />
+            </div>
+            <div className="flex-1">
+              <Textarea
+                value={ins.instruction}
+                onChange={e => updateInstr(i, e.target.value)}
+                placeholder="Ej: Nunca menciones a la competencia..."
+                rows={2}
+                className={cn(
+                  "resize-none",
+                  !ins.active && "opacity-50"
+                )}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {ins.active ? 'Activa' : 'Inactiva'} • El agente {ins.active ? 'usará' : 'no usará'} esta instrucción
+              </p>
+            </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -768,6 +812,7 @@ function AdvancedSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
           required_info: reqInfo,
           warranty,
           custom_instructions: instructions,
+          ...(isSuperAdmin ? { internal_custom_instructions: internalInstructions } : {}),
         })}
       />
     </div>
