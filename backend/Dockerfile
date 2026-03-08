@@ -26,8 +26,18 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Remove dev dependencies
-RUN npm prune --production
+# ══════════════════════════════════════════════════════════════════════════════
+# Stage 1.5: Production Dependencies
+# ══════════════════════════════════════════════════════════════════════════════
+FROM node:20-alpine AS dependencies
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ONLY production dependencies (faster and cleaner)
+RUN npm ci --omit=dev
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Stage 2: Production
@@ -43,8 +53,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Copy production node_modules from builder
-COPY --from=builder /app/node_modules ./node_modules
+# Copy production node_modules from dependencies stage
+COPY --from=dependencies /app/node_modules ./node_modules
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
