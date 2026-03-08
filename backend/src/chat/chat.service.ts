@@ -352,6 +352,21 @@ export class ChatService {
     const supabase = this.databaseService.getClient();
 
     try {
+      // Validar que tenemos access_token
+      if (!config.access_token) {
+        console.log('⚠️  Skipping Meta event send: access_token not configured');
+        // Guardar evento como "no enviado" por falta de config
+        await supabase.from('meta_ads_events').insert({
+          agent_id: agentId,
+          user_id: userId,
+          event_name: eventName,
+          sent_successfully: false,
+          error_message: 'Access token not configured',
+          was_test_event: config.test_mode || false,
+        });
+        return;
+      }
+
       // Desencriptar access token
       const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
       if (!encryptionKey) {
