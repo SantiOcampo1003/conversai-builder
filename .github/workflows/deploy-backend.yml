@@ -36,7 +36,7 @@ jobs:
         run: |
           echo "🚀 Triggering deployment to Easy Panel..."
 
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.EASYPANEL_DEPLOY_WEBHOOK_URL }}")
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.EASYPANEL_DEPLOY_WEBHOOK_URL }}")
 
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 204 ]; then
             echo "✅ Deployment triggered successfully (HTTP $HTTP_CODE)"
