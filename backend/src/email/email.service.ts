@@ -158,15 +158,15 @@ export class EmailService {
       case 'invitation':
         return {
           subject: `${params.inviterName} te ha invitado a unirte a ${params.inviterCompany}`,
-          headerTitle: '📧 Invitación a Equipo',
-          headerSubtitle: 'Has sido invitado a colaborar',
+          headerTitle: 'easy',
+          headerSubtitle: 'AI AGENTS',
         };
 
       case 'welcome':
         return {
           subject: `🚀 ¡Bienvenido a easy, ${params.name}!`,
-          headerTitle: `🚀 ¡Hola ${params.name}!`,
-          headerSubtitle: 'Estamos emocionados de ayudarte',
+          headerTitle: 'easy',
+          headerSubtitle: 'AI AGENTS',
         };
 
       default:
