@@ -3,15 +3,15 @@ import axios, { AxiosError } from 'axios';
 
 export interface MetaEventPayload {
   event_name: string;
-  event_time: number; 
+  event_time: number;
   action_source: 'physical_store' | 'website' | 'app' | 'phone_call' | 'chat' | 'email' | 'other';
   user_data: {
-    ph?: string[]; 
-    em?: string[]; 
+    ph?: string[];
+    em?: string[];
     client_ip_address?: string;
     client_user_agent?: string;
-    fbc?: string; 
-    fbp?: string; 
+    fbc?: string;
+    fbp?: string;
   };
   custom_data?: {
     source?: string;
@@ -21,7 +21,7 @@ export interface MetaEventPayload {
     value?: number;
     [key: string]: any;
   };
-  event_id?: string; 
+  event_id?: string;
   opt_out?: boolean;
 }
 
@@ -182,7 +182,7 @@ export class MetaAdsClient {
     return {
       event_name: eventName,
       event_time: Math.floor(Date.now() / 1000),
-      action_source: 'physical_store', 
+      action_source: 'physical_store',
       user_data: {
         ph: [this.hashPhone(userId)],
       },
@@ -191,7 +191,7 @@ export class MetaAdsClient {
         user_id: userId,
         ...customData,
       },
-      event_id: `${userId}_${eventName}_${Date.now()}`, 
+      event_id: `${userId}_${eventName}_${Date.now()}`,
     };
   }
 }

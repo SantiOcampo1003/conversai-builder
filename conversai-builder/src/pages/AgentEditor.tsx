@@ -80,17 +80,16 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; descrip
 ]
 
 const BUSINESS_CATEGORIES = [
-  { value: 'ropa',                   label: 'Ropa y Moda' },
-  { value: 'tecnologia',             label: 'Tecnología' },
-  { value: 'alimentos',              label: 'Alimentos y Bebidas' },
-  { value: 'belleza',                label: 'Belleza y Cuidado Personal' },
-  { value: 'hogar',                  label: 'Hogar y Decoración' },
-  { value: 'servicios-profesionales',label: 'Servicios Profesionales' },
-  { value: 'salud',                  label: 'Salud y Bienestar' },
-  { value: 'educacion',              label: 'Educación' },
-  { value: 'food',                   label: 'Alimentos (food)' },
-  { value: 'restaurant',             label: 'Restaurante' },
-  { value: 'otro',                   label: 'Otro' },
+  { value: 'Ropa y Moda',             label: 'Ropa y Moda' },
+  { value: 'Tecnología',              label: 'Tecnología' },
+  { value: 'Alimentos y Bebidas',     label: 'Alimentos y Bebidas' },
+  { value: 'Belleza',                 label: 'Belleza' },
+  { value: 'Hogar y Decoración',      label: 'Hogar y Decoración' },
+  { value: 'Servicios Profesionales', label: 'Servicios Profesionales' },
+  { value: 'Salud y Bienestar',       label: 'Salud y Bienestar' },
+  { value: 'Educación',               label: 'Educación' },
+  { value: 'Educación Financiera',    label: 'Educación Financiera' },
+  { value: 'Otro',                    label: 'Otro' },
 ]
 
 const PAYMENT_METHOD_OPTIONS = ['efectivo', 'transferencia', 'tarjeta', 'nequi', 'daviplata', 'pse', 'paypal', 'otro']
@@ -323,7 +322,7 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
   const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
 
   const [name, setName]         = useState(agent.business_name || '')
-  const [type, setType]         = useState(agent.business_type || 'products')
+  const [type, setType]         = useState(agent.business_type || 'Productos físicos')
   const [category, setCategory] = useState(agent.business_category || '')
   const [priceFrom, setPriceFrom] = useState(agent.price_range?.from || '')
   const [priceTo, setPriceTo]   = useState(agent.price_range?.to || '')
@@ -346,9 +345,13 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
         <Select value={type} onValueChange={handleChange(setType)}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="products">Productos</SelectItem>
-            <SelectItem value="services">Servicios</SelectItem>
-            <SelectItem value="both">Productos y Servicios</SelectItem>
+            {type && !['Productos físicos', 'Productos digitales', 'Servicios', 'Ambos'].includes(type) && (
+              <SelectItem value={type}>{type} (personalizado)</SelectItem>
+            )}
+            <SelectItem value="Productos físicos">Productos físicos</SelectItem>
+            <SelectItem value="Productos digitales">Productos digitales</SelectItem>
+            <SelectItem value="Servicios">Servicios</SelectItem>
+            <SelectItem value="Ambos">Ambos</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -358,6 +361,10 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
         <Select value={category} onValueChange={handleChange(setCategory)}>
           <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
           <SelectContent>
+            {/* Si el valor actual no está en la lista, agregarlo */}
+            {category && !BUSINESS_CATEGORIES.find(c => c.value === category) && (
+              <SelectItem value={category}>{category} (personalizado)</SelectItem>
+            )}
             {BUSINESS_CATEGORIES.map(c => (
               <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
             ))}

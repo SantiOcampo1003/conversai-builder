@@ -449,9 +449,10 @@ export const FlowFormSection = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="products">Productos físicos</SelectItem>
-                      <SelectItem value="services">Servicios</SelectItem>
-                      <SelectItem value="both">Ambos</SelectItem>
+                      <SelectItem value="Productos físicos">Productos físicos</SelectItem>
+                      <SelectItem value="Productos digitales">Productos digitales</SelectItem>
+                      <SelectItem value="Servicios">Servicios</SelectItem>
+                      <SelectItem value="Ambos">Ambos</SelectItem>
                     </SelectContent>
                   </Select>
                 </motion.div>
@@ -473,15 +474,16 @@ export const FlowFormSection = () => {
                       <SelectValue placeholder="Selecciona" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ropa">Ropa y Moda</SelectItem>
-                      <SelectItem value="tecnologia">Tecnología</SelectItem>
-                      <SelectItem value="alimentos">Alimentos y Bebidas</SelectItem>
-                      <SelectItem value="belleza">Belleza y Cuidado Personal</SelectItem>
-                      <SelectItem value="hogar">Hogar y Decoración</SelectItem>
-                      <SelectItem value="servicios-profesionales">Servicios Profesionales</SelectItem>
-                      <SelectItem value="salud">Salud y Bienestar</SelectItem>
-                      <SelectItem value="educacion">Educación</SelectItem>
-                      <SelectItem value="otro">Otro</SelectItem>
+                      <SelectItem value="Ropa y Moda">Ropa y Moda</SelectItem>
+                      <SelectItem value="Tecnología">Tecnología</SelectItem>
+                      <SelectItem value="Alimentos y Bebidas">Alimentos y Bebidas</SelectItem>
+                      <SelectItem value="Belleza">Belleza</SelectItem>
+                      <SelectItem value="Hogar y Decoración">Hogar y Decoración</SelectItem>
+                      <SelectItem value="Servicios Profesionales">Servicios Profesionales</SelectItem>
+                      <SelectItem value="Salud y Bienestar">Salud y Bienestar</SelectItem>
+                      <SelectItem value="Educación">Educación</SelectItem>
+                      <SelectItem value="Educación Financiera">Educación Financiera</SelectItem>
+                      <SelectItem value="Otro">Otro</SelectItem>
                     </SelectContent>
                   </Select>
                 </motion.div>
