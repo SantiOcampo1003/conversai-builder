@@ -36,6 +36,7 @@ export class LangchainService {
 
     // 1. Construir businessInfo (sin historial embebido)
     const businessInfo = buildBusinessInfo(agent);
+    console.log(`businessInfo: ${businessInfo}`);
 
     // 2. Convertir historial a formato LangChain
     const messages: BaseMessage[] = chatHistory.map((h) =>
