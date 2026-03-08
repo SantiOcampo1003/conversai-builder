@@ -50,7 +50,7 @@ BEGIN
   INSERT INTO public.token_balances (client_id, total_tokens, used_tokens, is_active, created_at)
   VALUES (
     v_client_id,
-    100,
+    50000,
     0,
     true,
     NOW()
@@ -60,7 +60,7 @@ BEGIN
   VALUES (
     v_client_id,
     'bonus',
-    100,
+    50000,
     'Tokens de bienvenida',
     NOW()
   );
