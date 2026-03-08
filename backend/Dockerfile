@@ -1,12 +1,9 @@
 # ────────────────────────────────────────────────────────────────────────────
 # ConversAI Builder - Backend Dockerfile
-# Multi-stage build for production-optimized NestJS application
+# Single-stage build for production NestJS application
 # ────────────────────────────────────────────────────────────────────────────
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Stage 1: Build
-# ══════════════════════════════════════════════════════════════════════════════
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 # Install dependencies for node-gyp (needed for some native modules)
 RUN apk add --no-cache python3 make g++
@@ -17,7 +14,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies for building)
+# Install ALL dependencies first (for build) - don't set NODE_ENV yet
 RUN npm ci
 
 # Copy source code
@@ -26,38 +23,8 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Stage 1.5: Production Dependencies
-# ══════════════════════════════════════════════════════════════════════════════
-FROM node:20-alpine AS dependencies
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install ONLY production dependencies (faster and cleaner)
-RUN npm ci --omit=dev
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Stage 2: Production
-# ══════════════════════════════════════════════════════════════════════════════
-FROM node:20-alpine AS production
-
-# Set NODE_ENV to production
-ENV NODE_ENV=production
-
-# Create app directory
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Copy production node_modules from dependencies stage
-COPY --from=dependencies /app/node_modules ./node_modules
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
+# Remove all node_modules and reinstall only production dependencies
+RUN rm -rf node_modules && NODE_ENV=production npm ci --omit=dev
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
