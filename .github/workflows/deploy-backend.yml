@@ -1,0 +1,64 @@
+name: Deploy Backend to Easy Panel
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  trigger-deployment:
+    name: Trigger Easy Panel Deployment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if backend files changed
+        id: check-changes
+        run: |
+          echo "Checking for changes in backend directory..."
+          if git diff --name-only HEAD^ HEAD | grep -q '^backend/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Backend files changed, deployment will be triggered"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  No backend changes detected"
+          fi
+
+      - name: Trigger Easy Panel Deployment
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          echo "🚀 Triggering deployment to Easy Panel..."
+
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.EASYPANEL_DEPLOY_WEBHOOK_URL }}")
+
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 204 ]; then
+            echo "✅ Deployment triggered successfully (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Deployment trigger failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Wait for deployment
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          echo "⏳ Waiting 10 seconds for deployment to start..."
+          sleep 10
+          echo "✅ Deployment request sent to Easy Panel"
+          echo ""
+          echo "📝 Check deployment status at: https://app.easypanel.io"
+
+      - name: Notify success
+        if: success() && steps.check-changes.outputs.changed == 'true'
+        run: |
+          echo "::notice::Backend deployment triggered successfully!"
+          echo ""
+          echo "📦 Commit: ${{ github.sha }}"
+          echo "👤 Author: ${{ github.actor }}"
+          echo "📝 Message: ${{ github.event.head_commit.message }}"

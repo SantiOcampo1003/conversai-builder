@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
@@ -117,6 +118,7 @@ export default function AgentEditor() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
   const { isSuperAdmin } = useIsSuperAdmin()
+  const { hasUnsavedChanges, markAsSaved, reset: resetEditorStore } = useEditorStore()
 
   const [agent, setAgent]           = useState<Agent | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -124,6 +126,7 @@ export default function AgentEditor() {
   const [saving, setSaving]         = useState(false)
   const [toastVisible, setToastVisible] = useState(false)
   const [toastError, setToastError] = useState<string | null>(null)
+  const [showExitDialog, setShowExitDialog] = useState(false)
 
   // ── Load agent ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -140,9 +143,10 @@ export default function AgentEditor() {
 
       setAgent(data || null)
       setLoading(false)
+      resetEditorStore() // Limpiar flag al cargar nuevo agente
     }
     load()
-  }, [user, agentId, clientId, loadingClientId])
+  }, [user, agentId, clientId, loadingClientId, resetEditorStore])
 
   // ── Save helper ───────────────────────────────────────────────────────────────
   const save = async (patch: Partial<Agent>) => {
@@ -157,9 +161,25 @@ export default function AgentEditor() {
     setSaving(false)
     setToastError(error ? error.message : null)
     setToastVisible(true)
-    if (!error) setAgent(prev => prev ? { ...prev, ...patch } : prev)
+    if (!error) {
+      setAgent(prev => prev ? { ...prev, ...patch } : prev)
+      markAsSaved() // Limpiar flag de cambios
+    }
     setTimeout(() => setToastVisible(false), 3000)
   }
+
+  // ── Detectar cambios sin guardar ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = '' // Chrome requiere esto
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
 
   // ── Loading / not found ───────────────────────────────────────────────────────
   if (loading) {
@@ -183,13 +203,27 @@ export default function AgentEditor() {
 
   const activeItem = SECTIONS.find(s => s.id === activeSection)!
 
+  // Handler para volver al dashboard con confirmación si hay cambios
+  const handleBackToDashboard = () => {
+    if (hasUnsavedChanges) {
+      setShowExitDialog(true)
+    } else {
+      navigate('/dashboard')
+    }
+  }
+
+  const confirmExit = () => {
+    setShowExitDialog(false)
+    navigate('/dashboard')
+  }
+
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       <header className="h-14 border-b border-border bg-card/50 backdrop-blur-sm flex items-center gap-4 px-6 shrink-0">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate('/dashboard')}
+          onClick={handleBackToDashboard}
           className="gap-2 text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -248,6 +282,24 @@ export default function AgentEditor() {
       </div>
 
       <SaveToast show={toastVisible} error={toastError} />
+
+      {/* Dialog de confirmación al salir con cambios sin guardar */}
+      <AlertDialog open={showExitDialog} onOpenChange={setShowExitDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Salir sin guardar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes cambios sin guardar. Si sales ahora, se perderán todos los cambios realizados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmExit} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Salir sin guardar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -268,6 +320,8 @@ function SaveButton({ onClick, saving }: { onClick: () => void; saving: boolean 
 
 // ── Section: Negocio ──────────────────────────────────────────────────────────
 function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
+
   const [name, setName]         = useState(agent.business_name || '')
   const [type, setType]         = useState(agent.business_type || 'products')
   const [category, setCategory] = useState(agent.business_category || '')
@@ -275,16 +329,21 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
   const [priceTo, setPriceTo]   = useState(agent.price_range?.to || '')
   const [currency, setCurrency] = useState(agent.price_range?.currency || 'COP')
 
+  const handleChange = <T,>(setter: (val: T) => void) => (val: T) => {
+    setter(val)
+    markAsUnsaved()
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
         <Label>Nombre del negocio</Label>
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Mi Tienda" />
+        <Input value={name} onChange={e => handleChange(setName)(e.target.value)} placeholder="Ej: Mi Tienda" />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <Label>Tipo de negocio</Label>
-        <Select value={type} onValueChange={setType}>
+        <Select value={type} onValueChange={handleChange(setType)}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="products">Productos</SelectItem>
@@ -296,7 +355,7 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
 
       <div className="flex flex-col gap-1.5">
         <Label>Categoría</Label>
-        <Select value={category} onValueChange={setCategory}>
+        <Select value={category} onValueChange={handleChange(setCategory)}>
           <SelectTrigger><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
           <SelectContent>
             {BUSINESS_CATEGORIES.map(c => (
@@ -309,7 +368,7 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
       <div className="flex flex-col gap-1.5">
         <Label>Rango de precios</Label>
         <div className="flex gap-3 items-center">
-          <Select value={currency} onValueChange={setCurrency}>
+          <Select value={currency} onValueChange={handleChange(setCurrency)}>
             <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="COP">COP</SelectItem>
@@ -318,9 +377,9 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
               <SelectItem value="MXN">MXN</SelectItem>
             </SelectContent>
           </Select>
-          <Input value={priceFrom} onChange={e => setPriceFrom(e.target.value)} placeholder="Desde" className="flex-1" />
+          <Input value={priceFrom} onChange={e => handleChange(setPriceFrom)(e.target.value)} placeholder="Desde" className="flex-1" />
           <span className="text-muted-foreground text-sm">–</span>
-          <Input value={priceTo} onChange={e => setPriceTo(e.target.value)} placeholder="Hasta" className="flex-1" />
+          <Input value={priceTo} onChange={e => handleChange(setPriceTo)(e.target.value)} placeholder="Hasta" className="flex-1" />
         </div>
       </div>
 
@@ -339,6 +398,7 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
 
 // ── Section: Productos ────────────────────────────────────────────────────────
 function ProductsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   const [items, setItems] = useState<{ name: string; price: string }[]>(
     Array.isArray(agent.products) ? agent.products : []
   )
@@ -409,6 +469,7 @@ function ProductsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
 
 // ── Section: Pagos y entrega ──────────────────────────────────────────────────
 function PaymentsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   const [methods, setMethods]       = useState<string[]>(Array.isArray(agent.payment_methods) ? agent.payment_methods : [])
   const [offersDelivery, setOffers] = useState(agent.delivery?.offers ?? false)
   const [deliveryCost, setCost]     = useState(agent.delivery?.cost || '')
@@ -518,6 +579,7 @@ function PaymentsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
 
 // ── Section: FAQs ─────────────────────────────────────────────────────────────
 function FaqsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   const [faqs, setFaqs]   = useState<{ question: string; answer: string }[]>(Array.isArray(agent.faqs) ? agent.faqs : [])
   const [objCommon, setObjCommon]     = useState(agent.objection_handling?.common || '')
   const [objResponse, setObjResponse] = useState(agent.objection_handling?.response || '')
@@ -609,6 +671,7 @@ function FaqsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Part
 
 // ── Section: Personalidad ─────────────────────────────────────────────────────
 function PersonalitySection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   const [tone, setTone]           = useState(agent.agent_personality?.tone || 'friendly')
   const [useEmojis, setUseEmojis] = useState(agent.agent_personality?.useEmojis ?? true)
   const [formality, setFormality] = useState(agent.agent_personality?.formalityLevel || 'tu')
@@ -688,6 +751,7 @@ function PersonalitySection({ agent, onSave, saving }: { agent: Agent; onSave: (
 
 // ── Section: Avanzado ─────────────────────────────────────────────────────────
 function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean; isSuperAdmin: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   const [reqInfo, setReqInfo]     = useState<string[]>(Array.isArray(agent.required_info) ? agent.required_info : [])
   const [warranty, setWarranty]   = useState(agent.warranty || '')
   const [instructions, setInstr]  = useState<{ instruction: string; active: boolean }[]>(
@@ -835,6 +899,7 @@ function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent
 
 // ── Meta Ads Section ──────────────────────────────────────────────────────────
 function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean; isSuperAdmin: boolean }) {
+  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
   // Cargar configuracion desde meta_ads_config
   const [loading, setLoading] = useState(true)
   const [metaConfig, setMetaConfig] = useState<MetaAdsConfig | null>(null)
@@ -852,8 +917,13 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
     { event: 'HotmartLinkSent', enabled: true, max_per_user: 3, description: 'Se comparte enlace de Hotmart' },
   ])
 
-  // Cargar configuracion al montar
+  // Cargar configuracion solo UNA VEZ al montar (no recargar al cambiar de pestaña)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
   useEffect(() => {
+    // Si ya se cargó, NO volver a cargar (evita sobrescribir cambios del usuario)
+    if (hasLoaded) return
+
     async function loadMetaConfig() {
       const { data, error } = await supabase
         .from('meta_ads_config')
@@ -872,9 +942,10 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
         }
       }
       setLoading(false)
+      setHasLoaded(true) // Marcar como cargado
     }
     loadMetaConfig()
-  }, [agent.agent_id])
+  }, [agent.agent_id, hasLoaded])
 
   const handleSave = async () => {
     try {
@@ -927,7 +998,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
         <Switch
           id="enable-meta-ads"
           checked={isEnabled}
-          onCheckedChange={setIsEnabled}
+          onCheckedChange={(val) => { setIsEnabled(val); markAsUnsaved(); }}
           disabled={!isSuperAdmin}
         />
         <div className="flex-1">
@@ -957,7 +1028,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
               <Label>Pixel ID *</Label>
               <Input
                 value={pixelId}
-                onChange={(e) => setPixelId(e.target.value)}
+                onChange={(e) => { setPixelId(e.target.value); markAsUnsaved(); }}
                 placeholder="1610790209771573"
                 disabled={!isSuperAdmin}
               />
@@ -971,7 +1042,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
               <Input
                 type="password"
                 value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
+                onChange={(e) => { setAccessToken(e.target.value); markAsUnsaved(); }}
                 placeholder="Ingresa el access token"
                 disabled={!isSuperAdmin}
               />
@@ -987,7 +1058,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
               <Switch
                 id="test-mode"
                 checked={testMode}
-                onCheckedChange={setTestMode}
+                onCheckedChange={(val) => { setTestMode(val); markAsUnsaved(); }}
                 disabled={!isSuperAdmin}
               />
               <div className="flex-1">
@@ -1005,7 +1076,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
                 <Label className="text-xs text-amber-900 dark:text-amber-100">Código de Evento de Prueba</Label>
                 <Input
                   value={testEventCode}
-                  onChange={(e) => setTestEventCode(e.target.value)}
+                  onChange={(e) => { setTestEventCode(e.target.value); markAsUnsaved(); }}
                   placeholder="TEST53568"
                   disabled={!isSuperAdmin}
                   className="bg-white dark:bg-background"
@@ -1044,6 +1115,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
                           const newEvents = [...trackedEvents]
                           newEvents[idx].enabled = checked
                           setTrackedEvents(newEvents)
+                          markAsUnsaved()
                         }}
                         disabled={!isSuperAdmin}
                       />
@@ -1073,6 +1145,7 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
                           const newEvents = [...trackedEvents]
                           newEvents[idx].max_per_user = parseInt(e.target.value) || 1
                           setTrackedEvents(newEvents)
+                          markAsUnsaved()
                         }}
                         className="w-24 mt-1"
                         disabled={!isSuperAdmin}
