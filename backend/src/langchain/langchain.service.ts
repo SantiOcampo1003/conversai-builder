@@ -203,7 +203,9 @@ export class LangchainService {
     tracked_events: TrackedEventConfig[];
   } | null> {
     try {
-      const supabase = this.databaseService.getClient();
+      // Use admin client to bypass RLS (internal backend query)
+      const supabase = this.databaseService.getAdminClient();
+      console.log(`🔍 Querying meta_ads_config for agent: ${agentId}`);
 
       const { data, error } = await supabase
         .from('meta_ads_config')
@@ -212,17 +214,24 @@ export class LangchainService {
         .maybeSingle();
 
       if (error) {
-        console.error('Error fetching meta_ads_config:', error);
+        console.error('❌ Error fetching meta_ads_config:', error);
         return null;
       }
 
-      if (!data || !data.is_enabled) {
+      if (!data) {
+        console.log('ℹ️  No meta_ads_config found for this agent');
         return null;
       }
 
+      if (!data.is_enabled) {
+        console.log('ℹ️  Meta Ads is disabled for this agent');
+        return null;
+      }
+
+      console.log(`✅ Meta Ads config found: ${data.tracked_events.length} events`);
       return data as { is_enabled: boolean; tracked_events: TrackedEventConfig[] };
     } catch (error) {
-      console.error('Unexpected error in getMetaAdsConfig:', error);
+      console.error('❌ Unexpected error in getMetaAdsConfig:', error.message);
       return null;
     }
   }
@@ -239,7 +248,8 @@ export class LangchainService {
     context?: string,
   ): Promise<void> {
     try {
-      const supabase = this.databaseService.getClient();
+      // Use admin client to bypass RLS
+      const supabase = this.databaseService.getAdminClient();
 
       await supabase.from('meta_ads_events').insert({
         agent_id: agentId,

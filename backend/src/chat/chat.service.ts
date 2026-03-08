@@ -223,7 +223,8 @@ export class ChatService {
     agentResponse: string;
     isFirstMessage: boolean;
   }): Promise<void> {
-    const supabase = this.databaseService.getClient();
+    // Use admin client for internal queries
+    const supabase = this.databaseService.getAdminClient();
 
     // 1. Cargar configuracion de Meta Ads
     const { data: config } = await supabase
