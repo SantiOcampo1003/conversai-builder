@@ -9,7 +9,6 @@ import {
   ChatHistoryEntry,
 } from '../common/types/agent.types';
 import { MetaAdsClient } from '../langchain/meta-ads.client';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 @Injectable()
 export class ChatService {
@@ -367,13 +366,8 @@ export class ChatService {
         return;
       }
 
-      // Desencriptar access token
-      const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
-      if (!encryptionKey) {
-        throw new Error('ENCRYPTION_KEY not configured');
-      }
-
-      const accessToken = this.decryptToken(config.access_token, encryptionKey);
+      // Decodificar access token desde Base64
+      const accessToken = this.decodeBase64(config.access_token);
 
       // Crear cliente de Meta
       const client = new MetaAdsClient(
@@ -389,9 +383,12 @@ export class ChatService {
       });
 
       console.log(`📤 Sending ${eventName} to Meta API...`);
+      console.log(`📦 Payload:`, JSON.stringify(payload, null, 2));
 
       // Enviar a Meta
       const result = await client.sendEvent(payload);
+
+      console.log(`📥 Meta API Response:`, JSON.stringify(result, null, 2));
 
       // Guardar resultado en BD
       await supabase.from('meta_ads_events').insert({
@@ -406,7 +403,7 @@ export class ChatService {
       });
 
       if (result.success) {
-        console.log(`✅ ${eventName} sent successfully to Meta`);
+        console.log(`✅ ${eventName} sent successfully to Meta (Event ID: ${result.eventId})`);
 
         // Actualizar lead status (si existe)
         await this.updateLeadMetaStatus(agentId, userId, eventName);
@@ -464,34 +461,18 @@ export class ChatService {
   }
 
   /**
-   * Desencripta un token usando AES-256-CBC con IV
+   * Decodifica un token desde Base64
    * @private
    */
-  private decryptToken(encryptedData: string, key: string): string {
-    const [ivHex, encrypted] = encryptedData.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const keyBuffer = Buffer.from(key, 'hex');
-
-    const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+  private decodeBase64(encoded: string): string {
+    return Buffer.from(encoded, 'base64').toString('utf8');
   }
 
   /**
-   * Encripta un token usando AES-256-CBC con IV aleatorio
+   * Codifica un token a Base64
    * @private
    */
-  private encryptToken(token: string, key: string): string {
-    const iv = randomBytes(16);
-    const keyBuffer = Buffer.from(key, 'hex');
-
-    const cipher = createCipheriv('aes-256-cbc', keyBuffer, iv);
-    let encrypted = cipher.update(token, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    // Guardar IV + encrypted (IV:encrypted)
-    return iv.toString('hex') + ':' + encrypted;
+  private encodeBase64(token: string): string {
+    return Buffer.from(token, 'utf8').toString('base64');
   }
 }

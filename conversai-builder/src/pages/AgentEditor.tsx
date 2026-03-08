@@ -961,7 +961,8 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
       // Solo incluir access_token si el usuario escribió algo
       // Si está vacío y ya existe config, NO sobrescribir (mantener el existente)
       if (accessToken) {
-        config.access_token = accessToken
+        // Codificar token a Base64 antes de guardar
+        config.access_token = btoa(accessToken)
       } else if (!metaConfig) {
         // Si es nuevo y está vacío, guardar null
         config.access_token = null
