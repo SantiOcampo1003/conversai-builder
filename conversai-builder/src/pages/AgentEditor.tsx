@@ -949,15 +949,24 @@ function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent;
 
   const handleSave = async () => {
     try {
-      const config = {
+      const config: any = {
         agent_id: agent.agent_id,
         is_enabled: isEnabled,
         pixel_id: pixelId,
-        access_token: accessToken || null,
         test_mode: testMode,
         test_event_code: testEventCode || null,
         tracked_events: trackedEvents,
       }
+
+      // Solo incluir access_token si el usuario escribió algo
+      // Si está vacío y ya existe config, NO sobrescribir (mantener el existente)
+      if (accessToken) {
+        config.access_token = accessToken
+      } else if (!metaConfig) {
+        // Si es nuevo y está vacío, guardar null
+        config.access_token = null
+      }
+      // Si es update y está vacío, NO incluir el campo (mantener el existente en BD)
 
       if (metaConfig) {
         // Update existing
