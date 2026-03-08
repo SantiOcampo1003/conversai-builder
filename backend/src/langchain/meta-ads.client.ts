@@ -3,15 +3,15 @@ import axios, { AxiosError } from 'axios';
 
 export interface MetaEventPayload {
   event_name: string;
-  event_time: number; // Unix timestamp
+  event_time: number; 
   action_source: 'physical_store' | 'website' | 'app' | 'phone_call' | 'chat' | 'email' | 'other';
   user_data: {
-    ph?: string[]; // Hashed phone number(s)
-    em?: string[]; // Hashed email(s)
+    ph?: string[]; 
+    em?: string[]; 
     client_ip_address?: string;
     client_user_agent?: string;
-    fbc?: string; // Facebook click ID
-    fbp?: string; // Facebook browser ID
+    fbc?: string; 
+    fbp?: string; 
   };
   custom_data?: {
     source?: string;
@@ -21,7 +21,7 @@ export interface MetaEventPayload {
     value?: number;
     [key: string]: any;
   };
-  event_id?: string; // For deduplication
+  event_id?: string; 
   opt_out?: boolean;
 }
 
@@ -77,7 +77,6 @@ export class MetaAdsClient {
         access_token: this.accessToken,
       };
 
-      // Agregar test_event_code si esta en modo test
       if (this.testMode && this.testEventCode) {
         body.test_event_code = this.testEventCode;
       }
@@ -85,10 +84,12 @@ export class MetaAdsClient {
       console.log(`📤 Sending event to Meta API:`);
       console.log(`   Event: ${payload.event_name}`);
       console.log(`   Test Mode: ${this.testMode}`);
+      console.log(`   Test Event Code: ${this.testEventCode || 'NOT SET'}`);
       console.log(`   URL: ${url}`);
+      console.log(`   Body (without access_token):`, JSON.stringify({ ...body, access_token: '[REDACTED]' }, null, 2));
 
       const response = await axios.post<MetaEventResponse>(url, body, {
-        timeout: 5000, // 5 segundos max
+        timeout: 5000, 
         headers: {
           'Content-Type': 'application/json',
         },
@@ -139,10 +140,10 @@ export class MetaAdsClient {
    * @returns Hash SHA256 en minusculas
    */
   hashPhone(phone: string): string {
-    // Remover todo excepto numeros
+    
     const cleaned = phone.replace(/\D/g, '');
 
-    // Crear hash SHA256 en lowercase
+    
     const hash = createHash('sha256').update(cleaned).digest('hex');
 
     return hash.toLowerCase();
@@ -180,8 +181,8 @@ export class MetaAdsClient {
   ): MetaEventPayload {
     return {
       event_name: eventName,
-      event_time: Math.floor(Date.now() / 1000), // Unix timestamp
-      action_source: 'chat', // Mas apropiado para conversaciones por WhatsApp
+      event_time: Math.floor(Date.now() / 1000), 
+      action_source: 'physical_store', 
       user_data: {
         ph: [this.hashPhone(userId)],
       },
@@ -190,7 +191,7 @@ export class MetaAdsClient {
         user_id: userId,
         ...customData,
       },
-      event_id: `${userId}_${eventName}_${Date.now()}`, // Para deduplicacion
+      event_id: `${userId}_${eventName}_${Date.now()}`, 
     };
   }
 }

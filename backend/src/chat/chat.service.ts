@@ -395,7 +395,7 @@ export class ChatService {
       console.log(`📥 Meta API Response:`, JSON.stringify(result, null, 2));
 
       // Guardar resultado en BD
-      await supabase.from('meta_ads_events').insert({
+      const { data: insertData, error: insertError } = await supabase.from('meta_ads_events').insert({
         agent_id: agentId,
         user_id: userId,
         event_name: eventName,
@@ -405,6 +405,12 @@ export class ChatService {
         was_test_event: config.test_mode || false,
         event_payload: payload,
       });
+
+      if (insertError) {
+        console.error(`❌ Error saving to meta_ads_events:`, insertError);
+      } else {
+        console.log(`✅ Event saved to meta_ads_events table`);
+      }
 
       if (result.success) {
         console.log(`✅ ${eventName} sent successfully to Meta (Event ID: ${result.eventId})`);
@@ -418,7 +424,7 @@ export class ChatService {
       console.error(`❌ Error sending event to Meta:`, error);
 
       // Guardar error en BD
-      await supabase.from('meta_ads_events').insert({
+      const { error: saveError } = await supabase.from('meta_ads_events').insert({
         agent_id: agentId,
         user_id: userId,
         event_name: eventName,
@@ -426,6 +432,10 @@ export class ChatService {
         error_message: error.message,
         was_test_event: config.test_mode || false,
       });
+
+      if (saveError) {
+        console.error(`❌ Error saving failure to meta_ads_events:`, saveError);
+      }
     }
   }
 
