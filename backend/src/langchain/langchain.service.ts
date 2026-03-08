@@ -85,6 +85,7 @@ export class LangchainService {
 
     // 5.2. Meta Ads Tracking Tool
     const metaConfig = await this.getMetaAdsConfig(agent.agent_id);
+    console.log(`🔍 Meta Ads config loaded:`, metaConfig ? `enabled=${metaConfig.is_enabled}` : 'null');
     if (metaConfig?.is_enabled) {
       console.log(`🎯 Tool habilitada: track_meta_ads_event`);
 
