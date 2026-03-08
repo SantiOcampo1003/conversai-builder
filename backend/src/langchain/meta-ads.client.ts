@@ -48,7 +48,7 @@ export interface SendEventResult {
  * ```
  */
 export class MetaAdsClient {
-  private readonly apiVersion = 'v21.0';
+  private readonly apiVersion = 'v25.0';
   private readonly baseUrl = 'https://graph.facebook.com';
 
   constructor(

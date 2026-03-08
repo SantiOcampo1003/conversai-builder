@@ -369,6 +369,10 @@ export class ChatService {
       // Decodificar access token desde Base64
       const accessToken = this.decodeBase64(config.access_token);
 
+      // Log para debug (solo primeros y ultimos caracteres)
+      console.log(`🔑 Access token (decoded): ${accessToken.substring(0, 20)}...${accessToken.substring(accessToken.length - 10)}`);
+      console.log(`📏 Token length: ${accessToken.length} characters`);
+
       // Crear cliente de Meta
       const client = new MetaAdsClient(
         config.pixel_id,
