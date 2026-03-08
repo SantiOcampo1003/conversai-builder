@@ -10,6 +10,7 @@ import { Agent, ChatHistoryEntry } from '../common/types/agent.types';
 import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
+import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
 import { DatabaseService } from '../database/database.service';
 import { createAgent } from 'langchain';
 
@@ -63,7 +64,10 @@ export class LangchainService {
     // 4. Token tracking
     const tokenCounter = new TokenCounterCallback();
 
-    // 5. Si hay tools, usar AgentExecutor
+    // 5. Preparar tools (customer info + meta ads)
+    const tools: any[] = [];
+
+    // 5.1. Customer Info Tool
     if (agent.required_info && agent.required_info.length > 0) {
       console.log(
         `🔧 Tool habilitada: save_customer_info (campos: ${agent.required_info.join(', ')})`,
@@ -76,10 +80,38 @@ export class LangchainService {
         agent.required_info,
       );
 
+      tools.push(customerInfoTool);
+    }
+
+    // 5.2. Meta Ads Tracking Tool
+    const metaConfig = await this.getMetaAdsConfig(agent.agent_id);
+    if (metaConfig?.is_enabled) {
+      console.log(`🎯 Tool habilitada: track_meta_ads_event`);
+
+      const metaTool = createMetaTrackingTool(
+        metaConfig.tracked_events,
+        async (eventName: MetaEventName, context?: string) => {
+          // Solo insertar en BD, NO enviar a Meta aun (se hace en chat.service.ts)
+          await this.markMetaEventForProcessing(
+            agent.agent_id,
+            userId,
+            eventName,
+            context,
+          );
+        }
+      );
+
+      if (metaTool) {
+        tools.push(metaTool);
+      }
+    }
+
+    // 6. Si hay tools, usar AgentExecutor
+    if (tools.length > 0) {
       // Crear react agent con createAgent de langchain
       const customAgent = createAgent({
         model,
-        tools: [customerInfoTool],
+        tools,
         systemPrompt: businessInfo, // System prompt
       });
 
@@ -129,7 +161,7 @@ export class LangchainService {
       };
     }
 
-    // 6. Sin tools, usar chain simple
+    // 7. Sin tools, usar chain simple
     const prompt = ChatPromptTemplate.fromMessages([
       ['system', businessInfo],
       new MessagesPlaceholder('chat_history'),
@@ -159,5 +191,67 @@ export class LangchainService {
       content: responseText,
       tokensUsed: tokenCounter.totalTokens,
     };
+  }
+
+  /**
+   * Obtiene la configuracion de Meta Ads para un agente
+   * @private
+   */
+  private async getMetaAdsConfig(agentId: string): Promise<{
+    is_enabled: boolean;
+    tracked_events: TrackedEventConfig[];
+  } | null> {
+    try {
+      const supabase = this.databaseService.getClient();
+
+      const { data, error } = await supabase
+        .from('meta_ads_config')
+        .select('is_enabled, tracked_events')
+        .eq('agent_id', agentId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching meta_ads_config:', error);
+        return null;
+      }
+
+      if (!data || !data.is_enabled) {
+        return null;
+      }
+
+      return data as { is_enabled: boolean; tracked_events: TrackedEventConfig[] };
+    } catch (error) {
+      console.error('Unexpected error in getMetaAdsConfig:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Marca un evento de Meta Ads para ser procesado despues
+   * (solo inserta en BD, NO envia a Meta API)
+   * @private
+   */
+  private async markMetaEventForProcessing(
+    agentId: string,
+    userId: string,
+    eventName: MetaEventName,
+    context?: string,
+  ): Promise<void> {
+    try {
+      const supabase = this.databaseService.getClient();
+
+      await supabase.from('meta_ads_events').insert({
+        agent_id: agentId,
+        user_id: userId,
+        event_name: eventName,
+        sent_successfully: false, // Pendiente de envio
+        event_payload: { context }, // Solo guardamos el contexto por ahora
+      });
+
+      console.log(`✅ Meta event marked for processing: ${eventName}`);
+    } catch (error) {
+      console.error('Error marking meta event:', error);
+      // No lanzar error, solo log (no afectar conversacion)
+    }
   }
 }

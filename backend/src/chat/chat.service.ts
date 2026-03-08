@@ -8,6 +8,8 @@ import {
   AgentWithTokens,
   ChatHistoryEntry,
 } from '../common/types/agent.types';
+import { MetaAdsClient } from '../langchain/meta-ads.client';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 @Injectable()
 export class ChatService {
@@ -113,6 +115,18 @@ export class ChatService {
       userId, // WhatsApp phone number para customer info tool
     );
 
+    // 4.5️⃣ Procesar eventos de Meta Ads (NO bloquea la respuesta)
+    this.processMetaAdsEvents({
+      agentId,
+      userId,
+      userMessage: messageText,
+      agentResponse: content,
+      isFirstMessage: chatHistory.length === 0,
+    }).catch(err => {
+      console.error('❌ Error procesando Meta Ads:', err);
+      // NO lanzar error, solo log (no afectar conversacion)
+    });
+
     // Calcular tokens a cobrar (con markup configurable)
     const markupPercentage = this.configService.get<number>(
       'TOKEN_MARKUP_PERCENTAGE',
@@ -195,5 +209,273 @@ export class ChatService {
     return {
       output: content,
     };
+  }
+
+  /**
+   * Procesa eventos de Meta Ads de forma asincrona
+   * Detecta eventos automaticos y envia eventos pendientes a Meta API
+   * @private
+   */
+  private async processMetaAdsEvents(params: {
+    agentId: string;
+    userId: string;
+    userMessage: string;
+    agentResponse: string;
+    isFirstMessage: boolean;
+  }): Promise<void> {
+    const supabase = this.databaseService.getClient();
+
+    // 1. Cargar configuracion de Meta Ads
+    const { data: config } = await supabase
+      .from('meta_ads_config')
+      .select('*')
+      .eq('agent_id', params.agentId)
+      .maybeSingle();
+
+    if (!config || !config.is_enabled) {
+      return; // Meta Ads no habilitado para este agente
+    }
+
+    console.log(`🎯 Procesando Meta Ads events para agente ${params.agentId}`);
+
+    const eventsToSend: string[] = [];
+
+    // 2. Detectar Contact (primer mensaje) - AUTOMATICO
+    if (params.isFirstMessage) {
+      const canSend = await this.canSendMetaEvent(
+        params.agentId,
+        params.userId,
+        'Contact',
+        config,
+      );
+
+      if (canSend) {
+        console.log(`   ✅ Contact event detected (first message)`);
+        eventsToSend.push('Contact');
+      }
+    }
+
+    // 3. Detectar HotmartLinkSent (regex en respuesta) - AUTOMATICO
+    if (/hotmart\.com|pay\.hotmart\.com|eduzz\.com/i.test(params.agentResponse)) {
+      const canSend = await this.canSendMetaEvent(
+        params.agentId,
+        params.userId,
+        'HotmartLinkSent',
+        config,
+      );
+
+      if (canSend) {
+        console.log(`   ✅ HotmartLinkSent event detected (link in response)`);
+        eventsToSend.push('HotmartLinkSent');
+      }
+    }
+
+    // 4. Buscar eventos marcados por la tool (sent_successfully = false)
+    const { data: pendingEvents } = await supabase
+      .from('meta_ads_events')
+      .select('id, event_name')
+      .eq('agent_id', params.agentId)
+      .eq('user_id', params.userId)
+      .eq('sent_successfully', false)
+      .gte('created_at', new Date(Date.now() - 60000).toISOString()); // Ultimos 60 seg
+
+    if (pendingEvents && pendingEvents.length > 0) {
+      for (const evt of pendingEvents) {
+        const canSend = await this.canSendMetaEvent(
+          params.agentId,
+          params.userId,
+          evt.event_name,
+          config,
+        );
+
+        if (canSend) {
+          console.log(`   ✅ ${evt.event_name} event detected (from tool)`);
+          eventsToSend.push(evt.event_name);
+
+          // Marcar como procesado
+          await supabase
+            .from('meta_ads_events')
+            .delete()
+            .eq('id', evt.id);
+        }
+      }
+    }
+
+    // 5. Enviar todos los eventos a Meta API
+    for (const eventName of eventsToSend) {
+      await this.sendEventToMeta(params.agentId, params.userId, eventName, config);
+    }
+
+    console.log(`🎯 Meta Ads processing complete: ${eventsToSend.length} events sent`);
+  }
+
+  /**
+   * Verifica si se puede enviar un evento (respeta limites configurados)
+   * @private
+   */
+  private async canSendMetaEvent(
+    agentId: string,
+    userId: string,
+    eventName: string,
+    config: any,
+  ): Promise<boolean> {
+    const eventConfig = config.tracked_events.find((e: any) => e.event === eventName);
+
+    if (!eventConfig || !eventConfig.enabled) {
+      return false;
+    }
+
+    const supabase = this.databaseService.getClient();
+
+    const { count } = await supabase
+      .from('meta_ads_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', agentId)
+      .eq('user_id', userId)
+      .eq('event_name', eventName)
+      .eq('sent_successfully', true);
+
+    return (count || 0) < eventConfig.max_per_user;
+  }
+
+  /**
+   * Envia un evento a Meta Conversions API
+   * @private
+   */
+  private async sendEventToMeta(
+    agentId: string,
+    userId: string,
+    eventName: string,
+    config: any,
+  ): Promise<void> {
+    const supabase = this.databaseService.getClient();
+
+    try {
+      // Desencriptar access token
+      const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
+      if (!encryptionKey) {
+        throw new Error('ENCRYPTION_KEY not configured');
+      }
+
+      const accessToken = this.decryptToken(config.access_token, encryptionKey);
+
+      // Crear cliente de Meta
+      const client = new MetaAdsClient(
+        config.pixel_id,
+        accessToken,
+        config.test_mode || false,
+        config.test_event_code,
+      );
+
+      // Construir payload
+      const payload = client.buildEventPayload(eventName, userId, {
+        agent_id: agentId,
+      });
+
+      console.log(`📤 Sending ${eventName} to Meta API...`);
+
+      // Enviar a Meta
+      const result = await client.sendEvent(payload);
+
+      // Guardar resultado en BD
+      await supabase.from('meta_ads_events').insert({
+        agent_id: agentId,
+        user_id: userId,
+        event_name: eventName,
+        sent_successfully: result.success,
+        meta_event_id: result.eventId || null,
+        error_message: result.error || null,
+        was_test_event: config.test_mode || false,
+        event_payload: payload,
+      });
+
+      if (result.success) {
+        console.log(`✅ ${eventName} sent successfully to Meta`);
+
+        // Actualizar lead status (si existe)
+        await this.updateLeadMetaStatus(agentId, userId, eventName);
+      } else {
+        console.error(`❌ Failed to send ${eventName} to Meta:`, result.error);
+      }
+    } catch (error) {
+      console.error(`❌ Error sending event to Meta:`, error);
+
+      // Guardar error en BD
+      await supabase.from('meta_ads_events').insert({
+        agent_id: agentId,
+        user_id: userId,
+        event_name: eventName,
+        sent_successfully: false,
+        error_message: error.message,
+        was_test_event: config.test_mode || false,
+      });
+    }
+  }
+
+  /**
+   * Actualiza el status de Meta Ads en la tabla leads
+   * @private
+   */
+  private async updateLeadMetaStatus(
+    agentId: string,
+    userId: string,
+    eventName: string,
+  ): Promise<void> {
+    const supabase = this.databaseService.getClient();
+
+    const { data: lead } = await supabase
+      .from('leads')
+      .select('meta_ads_status')
+      .eq('agent_id', agentId)
+      .eq('customer_id', userId)
+      .maybeSingle();
+
+    if (lead) {
+      const status = lead.meta_ads_status || {};
+      status[`${eventName.toLowerCase()}_sent`] = true;
+      status[`${eventName.toLowerCase()}_sent_at`] = new Date().toISOString();
+
+      if (eventName === 'HotmartLinkSent') {
+        status.hotmart_link_sent_count = (status.hotmart_link_sent_count || 0) + 1;
+      }
+
+      await supabase
+        .from('leads')
+        .update({ meta_ads_status: status })
+        .eq('agent_id', agentId)
+        .eq('customer_id', userId);
+    }
+  }
+
+  /**
+   * Desencripta un token usando AES-256-CBC con IV
+   * @private
+   */
+  private decryptToken(encryptedData: string, key: string): string {
+    const [ivHex, encrypted] = encryptedData.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const keyBuffer = Buffer.from(key, 'hex');
+
+    const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  }
+
+  /**
+   * Encripta un token usando AES-256-CBC con IV aleatorio
+   * @private
+   */
+  private encryptToken(token: string, key: string): string {
+    const iv = randomBytes(16);
+    const keyBuffer = Buffer.from(key, 'hex');
+
+    const cipher = createCipheriv('aes-256-cbc', keyBuffer, iv);
+    let encrypted = cipher.update(token, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    // Guardar IV + encrypted (IV:encrypted)
+    return iv.toString('hex') + ':' + encrypted;
   }
 }

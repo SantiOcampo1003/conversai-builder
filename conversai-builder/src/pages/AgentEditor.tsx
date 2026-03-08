@@ -6,7 +6,7 @@ import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
-  ChevronLeft, Loader2, Save, Plus, Trash2, Check,
+  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +52,21 @@ interface Agent {
   email: string | null
 }
 
-type SectionId = 'business' | 'products' | 'payments' | 'faqs' | 'personality' | 'advanced'
+interface MetaAdsConfig {
+  is_enabled: boolean
+  pixel_id: string
+  access_token: string
+  test_mode: boolean
+  test_event_code: string
+  tracked_events: {
+    event: string
+    enabled: boolean
+    max_per_user: number
+    description: string
+  }[]
+}
+
+type SectionId = 'business' | 'products' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'business',     label: 'Negocio',          icon: Store,         description: 'Nombre, tipo y categoría' },
@@ -59,6 +75,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; descrip
   { id: 'faqs',         label: 'FAQs',              icon: MessageCircle, description: 'Preguntas frecuentes' },
   { id: 'personality',  label: 'Personalidad',      icon: Sparkles,      description: 'Tono y estilo' },
   { id: 'advanced',     label: 'Avanzado',          icon: CheckCircle2,  description: 'Info requerida y más' },
+  { id: 'meta-ads',     label: 'Meta Ads',          icon: Target,        description: 'Configuración de tracking' },
 ]
 
 const BUSINESS_CATEGORIES = [
@@ -225,6 +242,7 @@ export default function AgentEditor() {
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'personality' && <PersonalitySection agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'advanced'    && <AdvancedSection    agent={agent} onSave={save} saving={saving} isSuperAdmin={isSuperAdmin} />}
+            {activeSection === 'meta-ads'    && <MetaAdsSection     agent={agent} onSave={save} saving={saving} isSuperAdmin={isSuperAdmin} />}
           </div>
         </main>
       </div>
@@ -811,6 +829,288 @@ function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent
           ...(isSuperAdmin ? { internal_custom_instructions: internalInstructions } : {}),
         })}
       />
+    </div>
+  )
+}
+
+// ── Meta Ads Section ──────────────────────────────────────────────────────────
+function MetaAdsSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean; isSuperAdmin: boolean }) {
+  // Cargar configuracion desde meta_ads_config
+  const [loading, setLoading] = useState(true)
+  const [metaConfig, setMetaConfig] = useState<MetaAdsConfig | null>(null)
+
+  // Estados locales
+  const [isEnabled, setIsEnabled] = useState(false)
+  const [pixelId, setPixelId] = useState('')
+  const [accessToken, setAccessToken] = useState('')
+  const [testMode, setTestMode] = useState(true)
+  const [testEventCode, setTestEventCode] = useState('')
+  const [trackedEvents, setTrackedEvents] = useState([
+    { event: 'Contact', enabled: true, max_per_user: 1, description: 'Primera interacción del usuario' },
+    { event: 'Lead', enabled: true, max_per_user: 2, description: 'Usuario muestra interés comercial' },
+    { event: 'SubmitApplication', enabled: false, max_per_user: 1, description: 'Usuario solicita avanzar con compra' },
+    { event: 'HotmartLinkSent', enabled: true, max_per_user: 3, description: 'Se comparte enlace de Hotmart' },
+  ])
+
+  // Cargar configuracion al montar
+  useEffect(() => {
+    async function loadMetaConfig() {
+      const { data, error } = await supabase
+        .from('meta_ads_config')
+        .select('*')
+        .eq('agent_id', agent.agent_id)
+        .maybeSingle()
+
+      if (!error && data) {
+        setMetaConfig(data)
+        setIsEnabled(data.is_enabled || false)
+        setPixelId(data.pixel_id || '')
+        setTestMode(data.test_mode ?? true)
+        setTestEventCode(data.test_event_code || '')
+        if (data.tracked_events) {
+          setTrackedEvents(data.tracked_events)
+        }
+      }
+      setLoading(false)
+    }
+    loadMetaConfig()
+  }, [agent.agent_id])
+
+  const handleSave = async () => {
+    try {
+      const config = {
+        agent_id: agent.agent_id,
+        is_enabled: isEnabled,
+        pixel_id: pixelId,
+        access_token: accessToken || null,
+        test_mode: testMode,
+        test_event_code: testEventCode || null,
+        tracked_events: trackedEvents,
+      }
+
+      if (metaConfig) {
+        // Update existing
+        const { error } = await supabase
+          .from('meta_ads_config')
+          .update(config)
+          .eq('agent_id', agent.agent_id)
+
+        if (error) throw error
+      } else {
+        // Insert new
+        const { error } = await supabase
+          .from('meta_ads_config')
+          .insert([config])
+
+        if (error) throw error
+      }
+
+      // Trigger parent save callback for toast notification
+      onSave({})
+    } catch (error) {
+      console.error('Error saving Meta Ads config:', error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Header con toggle principal */}
+      <div className="flex items-center gap-3 bg-secondary/30 rounded-xl p-4 border border-border">
+        <Switch
+          id="enable-meta-ads"
+          checked={isEnabled}
+          onCheckedChange={setIsEnabled}
+          disabled={!isSuperAdmin}
+        />
+        <div className="flex-1">
+          <Label htmlFor="enable-meta-ads" className="cursor-pointer font-medium">
+            Habilitar Meta Ads Tracking
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Envía eventos de conversión a Meta Business Manager para optimizar tus campañas publicitarias
+          </p>
+        </div>
+        {isEnabled && (
+          <Badge variant="default" className="bg-green-500">Activo</Badge>
+        )}
+      </div>
+
+      {/* Campos de configuracion (solo si esta habilitado) */}
+      {isEnabled && (
+        <>
+          {/* Credenciales */}
+          <div className="border border-border rounded-xl p-4 space-y-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <Key className="h-4 w-4 text-primary" />
+              Credenciales de Meta
+            </h3>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Pixel ID *</Label>
+              <Input
+                value={pixelId}
+                onChange={(e) => setPixelId(e.target.value)}
+                placeholder="1610790209771573"
+                disabled={!isSuperAdmin}
+              />
+              <p className="text-xs text-muted-foreground">
+                Lo encuentras en Events Manager → Configuración → Pixel
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Access Token *</Label>
+              <Input
+                type="password"
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                placeholder="Ingresa el access token"
+                disabled={!isSuperAdmin}
+              />
+              <p className="text-xs text-muted-foreground">
+                Genera uno desde Business Settings → System Users
+              </p>
+            </div>
+          </div>
+
+          {/* Test Mode */}
+          <div className="border border-amber-500/30 rounded-xl p-4 bg-amber-50 dark:bg-amber-950/20 space-y-3">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="test-mode"
+                checked={testMode}
+                onCheckedChange={setTestMode}
+                disabled={!isSuperAdmin}
+              />
+              <div className="flex-1">
+                <Label htmlFor="test-mode" className="cursor-pointer font-medium text-amber-900 dark:text-amber-100">
+                  Modo de Prueba
+                </Label>
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  Los eventos se enviarán a Test Events Tool (no se usan para optimización)
+                </p>
+              </div>
+            </div>
+
+            {testMode && (
+              <div className="pl-6">
+                <Label className="text-xs text-amber-900 dark:text-amber-100">Código de Evento de Prueba</Label>
+                <Input
+                  value={testEventCode}
+                  onChange={(e) => setTestEventCode(e.target.value)}
+                  placeholder="TEST53568"
+                  disabled={!isSuperAdmin}
+                  className="bg-white dark:bg-background"
+                />
+                <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                  Ve los eventos en tiempo real en Events Manager → Test Events
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Configuracion de eventos */}
+          <div className="border border-border rounded-xl p-4 space-y-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <Settings className="h-4 w-4 text-primary" />
+              Configuración de Eventos
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Configura qué eventos trackear y sus límites por usuario
+            </p>
+
+            <div className="space-y-3">
+              {trackedEvents.map((evt, idx) => (
+                <div
+                  key={evt.event}
+                  className={cn(
+                    "border rounded-lg p-3 space-y-2",
+                    evt.enabled ? "bg-primary/5 border-primary/30" : "bg-muted/50 border-border"
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3 flex-1">
+                      <Switch
+                        checked={evt.enabled}
+                        onCheckedChange={(checked) => {
+                          const newEvents = [...trackedEvents]
+                          newEvents[idx].enabled = checked
+                          setTrackedEvents(newEvents)
+                        }}
+                        disabled={!isSuperAdmin}
+                      />
+                      <div className="flex-1">
+                        <Label className="font-medium">{evt.event}</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {evt.description}
+                        </p>
+                      </div>
+                    </div>
+                    {evt.enabled && (
+                      <Badge variant="default" className="text-xs">
+                        Habilitado
+                      </Badge>
+                    )}
+                  </div>
+
+                  {evt.enabled && (
+                    <div className="pl-9 pt-2 border-t border-border/50">
+                      <Label className="text-xs">Máximo de eventos por usuario</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={evt.max_per_user}
+                        onChange={(e) => {
+                          const newEvents = [...trackedEvents]
+                          newEvents[idx].max_per_user = parseInt(e.target.value) || 1
+                          setTrackedEvents(newEvents)
+                        }}
+                        className="w-24 mt-1"
+                        disabled={!isSuperAdmin}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Previene enviar eventos duplicados
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Save button (solo para super admin) */}
+          {isSuperAdmin && (
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Guardar Configuración
+            </Button>
+          )}
+
+          {/* Read-only message para clientes */}
+          {!isSuperAdmin && (
+            <div className="bg-muted/50 border border-border rounded-xl p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Esta configuración es administrada por el equipo de soporte.
+                <br />
+                Contacta a tu administrador si necesitas hacer cambios.
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
