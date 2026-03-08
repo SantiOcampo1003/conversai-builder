@@ -181,7 +181,7 @@ export class MetaAdsClient {
   ): MetaEventPayload {
     return {
       event_name: eventName,
-      event_time: Math.floor(Date.now() / 1000), 
+      event_time: Math.floor(Date.now() / 1000),
       action_source: 'physical_store', 
       user_data: {
         ph: [this.hashPhone(userId)],

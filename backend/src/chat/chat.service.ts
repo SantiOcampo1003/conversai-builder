@@ -348,13 +348,11 @@ export class ChatService {
     eventName: string,
     config: any,
   ): Promise<void> {
-    const supabase = this.databaseService.getClient();
+    const supabase = this.databaseService.getAdminClient();
 
     try {
-      // Validar que tenemos access_token
       if (!config.access_token) {
         console.log('⚠️  Skipping Meta event send: access_token not configured');
-        // Guardar evento como "no enviado" por falta de config
         await supabase.from('meta_ads_events').insert({
           agent_id: agentId,
           user_id: userId,
@@ -366,14 +364,11 @@ export class ChatService {
         return;
       }
 
-      // Decodificar access token desde Base64
       const accessToken = this.decodeBase64(config.access_token);
 
-      // Log para debug (solo primeros y ultimos caracteres)
       console.log(`🔑 Access token (decoded): ${accessToken.substring(0, 20)}...${accessToken.substring(accessToken.length - 10)}`);
       console.log(`📏 Token length: ${accessToken.length} characters`);
 
-      // Crear cliente de Meta
       const client = new MetaAdsClient(
         config.pixel_id,
         accessToken,
@@ -381,7 +376,6 @@ export class ChatService {
         config.test_event_code,
       );
 
-      // Construir payload
       const payload = client.buildEventPayload(eventName, userId, {
         agent_id: agentId,
       });
@@ -389,12 +383,10 @@ export class ChatService {
       console.log(`📤 Sending ${eventName} to Meta API...`);
       console.log(`📦 Payload:`, JSON.stringify(payload, null, 2));
 
-      // Enviar a Meta
       const result = await client.sendEvent(payload);
 
       console.log(`📥 Meta API Response:`, JSON.stringify(result, null, 2));
 
-      // Guardar resultado en BD
       const { data: insertData, error: insertError } = await supabase.from('meta_ads_events').insert({
         agent_id: agentId,
         user_id: userId,
@@ -415,7 +407,6 @@ export class ChatService {
       if (result.success) {
         console.log(`✅ ${eventName} sent successfully to Meta (Event ID: ${result.eventId})`);
 
-        // Actualizar lead status (si existe)
         await this.updateLeadMetaStatus(agentId, userId, eventName);
       } else {
         console.error(`❌ Failed to send ${eventName} to Meta:`, result.error);
@@ -423,7 +414,6 @@ export class ChatService {
     } catch (error) {
       console.error(`❌ Error sending event to Meta:`, error);
 
-      // Guardar error en BD
       const { error: saveError } = await supabase.from('meta_ads_events').insert({
         agent_id: agentId,
         user_id: userId,
