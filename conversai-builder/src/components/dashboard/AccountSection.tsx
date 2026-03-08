@@ -260,20 +260,33 @@ function TeamTab() {
       setLastInviteUrl(inviteUrl)
 
       try {
-        const emailResponse = await fetch(import.meta.env.VITE_N8N_INVITE_WEBHOOK as string, {
+        // Obtener información del cliente para el email
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('company_name, name')
+          .eq('id', clientId)
+          .single()
+
+        // Obtener nombre del invitador (del user metadata o email)
+        const inviterName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin'
+
+        const emailResponse = await fetch(import.meta.env.VITE_EMAIL_ENDPOINT_URL as string, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: 'user-invite',
-            email: inviteEmail,
-            role: inviteRole,
-            inviteUrl,
-            invitedBy: user?.email || 'Admin',
+            to: inviteEmail,
+            template: 'invitation',
+            params: {
+              inviterName,
+              inviterCompany: clientData?.company_name || clientData?.name || 'ConversAI Builder',
+              invitationUrl: inviteUrl,
+              role: inviteRole,
+            },
           }),
         })
 
         if (!emailResponse.ok) {
-          throw new Error('Email webhook failed')
+          throw new Error('Email service failed')
         }
 
         setInviteSuccess(true)
@@ -308,21 +321,34 @@ function TeamTab() {
   }
 
   const handleResendInvite = async (member: Member) => {
-    if (!member.invite_token) return
+    if (!member.invite_token || !clientId) return
 
     setResending(member.id)
     try {
       const inviteUrl = `${window.location.origin}/accept-invite?token=${member.invite_token}`
 
-      const response = await fetch(import.meta.env.VITE_N8N_INVITE_WEBHOOK as string, {
+      // Obtener información del cliente para el email
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('company_name, name')
+        .eq('id', clientId)
+        .single()
+
+      // Obtener nombre del invitador
+      const inviterName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin'
+
+      const response = await fetch(import.meta.env.VITE_EMAIL_ENDPOINT_URL as string, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'user-invite',
-          email: member.email,
-          role: member.role,
-          inviteUrl,
-          invitedBy: user?.email || 'Admin',
+          to: member.email,
+          template: 'invitation',
+          params: {
+            inviterName,
+            inviterCompany: clientData?.company_name || clientData?.name || 'ConversAI Builder',
+            invitationUrl: inviteUrl,
+            role: member.role,
+          },
         }),
       })
 

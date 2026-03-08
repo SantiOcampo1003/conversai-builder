@@ -65,6 +65,9 @@ import {
   ChevronRight,
   UserPlus,
   LogIn,
+  Upload,
+  Download,
+  Trash2,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
@@ -102,6 +105,7 @@ type ServiceOrder = {
   payment_status: 'pending' | 'paid' | 'cancelled' | 'refunded'
   service_status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
   estimated_completion_date: string | null
+  attachment_url: string | null
   created_at: string
   updated_at: string
   // Joins
@@ -1047,6 +1051,7 @@ function OrderDetailSheet({
   const queryClient = useQueryClient()
   const [newComment, setNewComment] = useState('')
   const [isInternal, setIsInternal] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   // ── Fetch Comments ─────────────────────────────────────────────────────
   const { data: comments = [] } = useQuery({
@@ -1144,6 +1149,127 @@ function OrderDetailSheet({
       toast({ title: 'Comentario agregado' })
     },
   })
+
+  // ── Upload Attachment ──────────────────────────────────────────────────
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validar tamaño (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'Archivo muy grande',
+        description: 'El archivo no puede superar los 10MB',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setUploading(true)
+
+    try {
+      // Eliminar archivo anterior si existe
+      if (order.attachment_url) {
+        await supabase.storage.from('service-orders').remove([order.attachment_url])
+      }
+
+      // Subir nuevo archivo
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${order.id}-${Date.now()}.${fileExt}`
+      const filePath = `${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('service-orders')
+        .upload(filePath, file, {
+          upsert: true,
+        })
+
+      if (uploadError) throw uploadError
+
+      // Actualizar order con la URL del archivo
+      const { error: updateError } = await supabase
+        .from('service_orders')
+        .update({ attachment_url: filePath })
+        .eq('id', order.id)
+
+      if (updateError) throw updateError
+
+      queryClient.invalidateQueries({ queryKey: ['service-orders'] })
+      toast({ title: 'Archivo subido correctamente' })
+    } catch (error: any) {
+      console.error('Error uploading file:', error)
+      toast({
+        title: 'Error al subir archivo',
+        description: error.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setUploading(false)
+      event.target.value = '' // Reset input
+    }
+  }
+
+  // ── Download Attachment ────────────────────────────────────────────────
+  const handleDownload = async () => {
+    if (!order.attachment_url) return
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('service-orders')
+        .download(order.attachment_url)
+
+      if (error) throw error
+
+      // Crear URL para descargar
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = order.attachment_url.split('/').pop() || 'adjunto.pdf'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error: any) {
+      console.error('Error downloading file:', error)
+      toast({
+        title: 'Error al descargar archivo',
+        description: error.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  // ── Delete Attachment ──────────────────────────────────────────────────
+  const handleDeleteAttachment = async () => {
+    if (!order.attachment_url) return
+
+    try {
+      // Eliminar de storage
+      const { error: storageError } = await supabase.storage
+        .from('service-orders')
+        .remove([order.attachment_url])
+
+      if (storageError) throw storageError
+
+      // Actualizar order
+      const { error: updateError } = await supabase
+        .from('service_orders')
+        .update({ attachment_url: null })
+        .eq('id', order.id)
+
+      if (updateError) throw updateError
+
+      queryClient.invalidateQueries({ queryKey: ['service-orders'] })
+      toast({ title: 'Archivo eliminado' })
+    } catch (error: any) {
+      console.error('Error deleting file:', error)
+      toast({
+        title: 'Error al eliminar archivo',
+        description: error.message,
+        variant: 'destructive',
+      })
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -1276,6 +1402,94 @@ function OrderDetailSheet({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Adjuntos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Adjuntos
+                </CardTitle>
+                <CardDescription>
+                  Sube cotizaciones, contratos o documentos relacionados
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {order.attachment_url ? (
+                  <div className="flex items-center justify-between p-3 border rounded-lg bg-secondary/20">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {order.attachment_url.split('-').pop()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Adjunto actual</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDownload}
+                        className="gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Descargar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDeleteAttachment}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center p-4 border-2 border-dashed rounded-lg">
+                    <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground mb-3">No hay adjuntos</p>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="file-upload" className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={uploading}
+                        className="gap-2"
+                        onClick={() => document.getElementById('file-upload')?.click()}
+                      >
+                        {uploading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Subiendo...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4" />
+                            {order.attachment_url ? 'Reemplazar archivo' : 'Subir archivo'}
+                          </>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        PDF, Word, Imágenes (máx. 10MB)
+                      </p>
+                    </div>
+                  </Label>
+                  <Input
+                    id="file-upload"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
                 </div>
               </CardContent>
             </Card>

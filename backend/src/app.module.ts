@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { DatabaseModule } from './database/database.module';
 import { LangchainModule } from './langchain/langchain.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { LangchainModule } from './langchain/langchain.module';
     DatabaseModule,
     LangchainModule,
     ChatModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

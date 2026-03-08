@@ -1,0 +1,28 @@
+<tr>
+  <td style="padding: 40px 30px;">
+
+    <!-- Mensaje principal -->
+    <p style="margin: 0 0 24px 0; font-size: 16px; color: #4a4a4a; line-height: 1.6;">
+      <strong style="color: #667eea;">{{inviterName}}</strong> te ha invitado a unirte a su equipo en <strong>{{inviterCompany}}</strong>{{#if role}} como <strong style="color: #667eea;">{{role}}</strong>{{/if}}.
+    </p>
+
+    <p style="margin: 0 0 30px 0; font-size: 16px; color: #4a4a4a; line-height: 1.6;">
+      Haz clic en el botón de abajo para aceptar la invitación y crear tu cuenta:
+    </p>
+
+    <!-- Botón CTA -->
+    {{> button url=invitationUrl text="Aceptar Invitación" margin="0 0 30px 0"}}
+
+    <!-- Divider -->
+    <div style="height: 1px; background-color: #e5e5e5; margin: 30px 0;"></div>
+
+    <!-- Instrucciones alternativas -->
+    <p style="margin: 0 0 12px 0; font-size: 14px; color: #6b6b6b; line-height: 1.6;">
+      Si el botón no funciona, copia y pega este enlace en tu navegador:
+    </p>
+    <p style="margin: 0; font-size: 13px; color: #667eea; word-break: break-all; line-height: 1.6;">
+      {{invitationUrl}}
+    </p>
+
+  </td>
+</tr>

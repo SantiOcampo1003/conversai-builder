@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
-import { MessageSquare, Loader2, Bot, User, Search, RefreshCw, UserCircle } from 'lucide-react'
+import { MessageSquare, Loader2, Bot, User, Search, RefreshCw, UserCircle, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -41,6 +41,14 @@ interface LeadInfo {
   updated_at: string
 }
 
+interface MetaEvent {
+  id: string
+  event_name: string
+  sent_successfully: boolean
+  created_at: string
+  was_test_event: boolean
+}
+
 const PAGE_SIZE = 50
 
 export function WAInteractionsSection() {
@@ -54,6 +62,7 @@ export function WAInteractionsSection() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null)
+  const [metaEvents, setMetaEvents] = useState<MetaEvent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(true)
   const [loadingConversations, setLoadingConversations] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -296,6 +305,27 @@ export function WAInteractionsSection() {
     fetchLeadInfo()
   }, [selectedConversation])
 
+  // 5. Cargar eventos de Meta Ads
+  useEffect(() => {
+    if (!selectedConversation) {
+      setMetaEvents([])
+      return
+    }
+
+    const fetchMetaEvents = async () => {
+      const { data } = await supabase
+        .from('meta_ads_events')
+        .select('id, event_name, sent_successfully, created_at, was_test_event')
+        .eq('agent_id', selectedConversation.agent_id)
+        .eq('user_id', selectedConversation.user_id)
+        .eq('sent_successfully', true)
+        .order('created_at', { ascending: true })
+
+      setMetaEvents((data as MetaEvent[]) || [])
+    }
+    fetchMetaEvents()
+  }, [selectedConversation])
+
   const hasMore = conversations.length < totalConversations
 
   const loadMore = () => {
@@ -466,26 +496,49 @@ export function WAInteractionsSection() {
                 </div>
 
                 {/* Customer Info Badges */}
-                {leadInfo && leadInfo.additional_fields && Object.keys(leadInfo.additional_fields).length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(leadInfo.additional_fields).map(([key, value]) => {
-                      if (!value || value === '') return null
-                      return (
+                <div className="flex flex-col gap-2">
+                  {leadInfo && leadInfo.additional_fields && Object.keys(leadInfo.additional_fields).length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(leadInfo.additional_fields).map(([key, value]) => {
+                        if (!value || value === '') return null
+                        return (
+                          <Badge
+                            key={key}
+                            variant="secondary"
+                            className="text-xs font-normal gap-1.5 px-2.5 py-1"
+                          >
+                            <UserCircle className="h-3 w-3" />
+                            <span className="font-medium capitalize">{key}:</span>
+                            <span className="text-muted-foreground">{String(value)}</span>
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/60 italic">Sin información adicional del cliente</p>
+                  )}
+
+                  {/* Meta Ads Events */}
+                  {metaEvents.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50">
+                      <span className="text-xs text-muted-foreground/70 font-medium flex items-center gap-1.5 mr-1">
+                        <Target className="h-3 w-3" />
+                        Eventos Meta:
+                      </span>
+                      {metaEvents.map((event) => (
                         <Badge
-                          key={key}
-                          variant="secondary"
-                          className="text-xs font-normal gap-1.5 px-2.5 py-1"
+                          key={event.id}
+                          className="text-xs font-normal gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20"
                         >
-                          <UserCircle className="h-3 w-3" />
-                          <span className="font-medium capitalize">{key}:</span>
-                          <span className="text-muted-foreground">{String(value)}</span>
+                          <span className="font-medium">{event.event_name}</span>
+                          {event.was_test_event && (
+                            <span className="text-[10px] opacity-60">(test)</span>
+                          )}
                         </Badge>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground/60 italic">Sin información adicional del cliente</p>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Mensajes */}

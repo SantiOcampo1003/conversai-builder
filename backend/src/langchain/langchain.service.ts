@@ -35,11 +35,17 @@ export class LangchainService {
     console.log(`🤖 Ejecutando agente para: ${agent.business_name}`);
     console.log(`📚 Historial: ${chatHistory.length} mensajes`);
 
-    // 1. Construir businessInfo (sin historial embebido)
-    const businessInfo = buildBusinessInfo(agent);
+    // 1. Cargar config de Meta Ads primero (para incluir en prompt)
+    const metaConfig = await this.getMetaAdsConfig(agent.agent_id);
+    console.log(`🔍 Meta Ads config loaded:`, metaConfig ? `enabled=${metaConfig.is_enabled}` : 'null');
+
+    // 2. Construir businessInfo (con info de Meta Ads si está habilitado)
+    const businessInfo = buildBusinessInfo(agent, {
+      hasMetaAds: metaConfig?.is_enabled || false
+    });
     console.log(`businessInfo: ${businessInfo}`);
 
-    // 2. Convertir historial a formato LangChain
+    // 3. Convertir historial a formato LangChain
     const messages: BaseMessage[] = chatHistory.map((h) =>
       h.role === 'user'
         ? new HumanMessage(h.message)
@@ -48,7 +54,7 @@ export class LangchainService {
 
     console.log(`💬 Mensajes convertidos: ${messages.length}`);
 
-    // 3. Configurar modelo
+    // 4. Configurar modelo
     const model = new ChatOpenAI({
       modelName: agent.model || 'gpt-4-turbo',
       temperature: agent.temperature ?? 0.7,
@@ -61,13 +67,13 @@ export class LangchainService {
       },
     });
 
-    // 4. Token tracking
+    // 5. Token tracking
     const tokenCounter = new TokenCounterCallback();
 
-    // 5. Preparar tools (customer info + meta ads)
+    // 6. Preparar tools (customer info + meta ads)
     const tools: any[] = [];
 
-    // 5.1. Customer Info Tool
+    // 6.1. Customer Info Tool
     if (agent.required_info && agent.required_info.length > 0) {
       console.log(
         `🔧 Tool habilitada: save_customer_info (campos: ${agent.required_info.join(', ')})`,
@@ -83,9 +89,7 @@ export class LangchainService {
       tools.push(customerInfoTool);
     }
 
-    // 5.2. Meta Ads Tracking Tool
-    const metaConfig = await this.getMetaAdsConfig(agent.agent_id);
-    console.log(`🔍 Meta Ads config loaded:`, metaConfig ? `enabled=${metaConfig.is_enabled}` : 'null');
+    // 6.2. Meta Ads Tracking Tool
     if (metaConfig?.is_enabled) {
       console.log(`🎯 Tool habilitada: track_meta_ads_event`);
 

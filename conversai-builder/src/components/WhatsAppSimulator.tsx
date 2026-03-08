@@ -295,21 +295,25 @@ export const WhatsAppSimulator = ({
         // No bloquear al usuario si falla la inserción, continuar con el flujo
       }
 
-      // 2. Notificar por email via N8N (solo para el envío de Gmail)
+      // 2. Enviar email de bienvenida
       try {
-        await fetch(import.meta.env.VITE_N8N_CONTACT_WEBHOOK as string, {
+        await fetch(import.meta.env.VITE_EMAIL_ENDPOINT_URL as string, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...contactData,
-            agentId,
-            source: 'chat-simulator',
-            timestamp: new Date().toISOString(),
+            to: submittedEmail,
+            template: 'welcome',
+            params: {
+              name: submittedName,
+              phone: submittedPhone,
+              email: submittedEmail,
+              agentId: agentId || 'N/A',
+            },
           }),
         });
-      } catch (webhookError) {
+      } catch (emailError) {
         // El email es secundario, no bloquear el flujo si falla
-        console.warn('Error enviando notificación por email:', webhookError);
+        console.warn('Error enviando email de bienvenida:', emailError);
       }
 
       toast({
