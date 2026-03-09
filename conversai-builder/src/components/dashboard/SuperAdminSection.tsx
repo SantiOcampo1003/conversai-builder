@@ -1194,6 +1194,9 @@ function OrderDetailSheet({
 
       if (updateError) throw updateError
 
+      // Actualizar estado local inmediatamente
+      setSelectedOrder(prev => prev ? { ...prev, attachment_url: filePath } : null)
+
       queryClient.invalidateQueries({ queryKey: ['service-orders'] })
       toast({ title: 'Archivo subido correctamente' })
     } catch (error: any) {
@@ -1258,6 +1261,9 @@ function OrderDetailSheet({
         .eq('id', order.id)
 
       if (updateError) throw updateError
+
+      // Actualizar estado local inmediatamente
+      setSelectedOrder(prev => prev ? { ...prev, attachment_url: null } : null)
 
       queryClient.invalidateQueries({ queryKey: ['service-orders'] })
       toast({ title: 'Archivo eliminado' })
