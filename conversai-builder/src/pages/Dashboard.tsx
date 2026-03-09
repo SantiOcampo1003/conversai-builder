@@ -86,10 +86,10 @@ export default function Dashboard() {
       try {
         return JSON.parse(saved)
       } catch {
-        return { bottom: 24, right: 24 }
+        return { bottom: 54, right: 24 }
       }
     }
-    return { bottom: 24, right: 24 }
+    return { bottom: 54, right: 24 }
   })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
@@ -114,7 +114,7 @@ export default function Dashboard() {
 
       setFeedbackPosition(prev => {
         const newPosition = {
-          bottom: Math.max(24, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
+          bottom: Math.max(54, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
           right: prev.right, // Mantener right fijo (no mover horizontalmente)
         }
 
