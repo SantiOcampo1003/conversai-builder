@@ -834,6 +834,7 @@ export function SuperAdminSection() {
           order={selectedOrder}
           open={!!selectedOrder}
           onOpenChange={(open) => !open && setSelectedOrder(null)}
+          onOrderUpdate={setSelectedOrder}
         />
       )}
 
@@ -1042,10 +1043,12 @@ function OrderDetailSheet({
   order,
   open,
   onOpenChange,
+  onOrderUpdate,
 }: {
   order: ServiceOrder
   open: boolean
   onOpenChange: (open: boolean) => void
+  onOrderUpdate: (order: ServiceOrder) => void
 }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -1195,7 +1198,7 @@ function OrderDetailSheet({
       if (updateError) throw updateError
 
       // Actualizar estado local inmediatamente
-      setSelectedOrder(prev => prev ? { ...prev, attachment_url: filePath } : null)
+      onOrderUpdate({ ...order, attachment_url: filePath })
 
       queryClient.invalidateQueries({ queryKey: ['service-orders'] })
       toast({ title: 'Archivo subido correctamente' })
@@ -1263,7 +1266,7 @@ function OrderDetailSheet({
       if (updateError) throw updateError
 
       // Actualizar estado local inmediatamente
-      setSelectedOrder(prev => prev ? { ...prev, attachment_url: null } : null)
+      onOrderUpdate({ ...order, attachment_url: null })
 
       queryClient.invalidateQueries({ queryKey: ['service-orders'] })
       toast({ title: 'Archivo eliminado' })
