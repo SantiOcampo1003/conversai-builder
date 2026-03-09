@@ -36,6 +36,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface TokenBalance {
@@ -200,6 +207,12 @@ export function TokensSection() {
   const [retrying, setRetrying] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState<ServiceOrder | null>(null)
 
+  // Filters and pagination for transactions
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all')
+  const [transactionDateFilter, setTransactionDateFilter] = useState<string>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
   // Query para datos de tokens
   const { data: tokensData, isLoading } = useQuery({
     queryKey: ['tokens-data', clientId],
@@ -294,11 +307,53 @@ export function TokensSection() {
   })
 
   const balance = tokensData?.balance || null
-  const transactions = tokensData?.transactions || []
+  const allTransactions = tokensData?.transactions || []
   const packages = tokensData?.packages || []
   const agentUsage = tokensData?.agentUsage || []
   const serviceOrders = (tokensData?.serviceOrders || []) as ServiceOrder[]
   const loading = isLoading
+
+  // Filter transactions
+  const filteredTransactions = allTransactions.filter((tx) => {
+    // Type filter
+    if (transactionTypeFilter !== 'all' && tx.type !== transactionTypeFilter) {
+      return false
+    }
+
+    // Date filter
+    if (transactionDateFilter !== 'all') {
+      const txDate = new Date(tx.created_at)
+      const now = new Date()
+
+      switch (transactionDateFilter) {
+        case 'today':
+          return txDate.toDateString() === now.toDateString()
+        case 'week':
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          return txDate >= weekAgo
+        case 'month':
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          return txDate >= monthAgo
+        case 'year':
+          const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+          return txDate >= yearAgo
+        default:
+          return true
+      }
+    }
+
+    return true
+  })
+
+  // Paginate transactions
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage)
+  const paginatedTransactions = filteredTransactions.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
+  // Update pending transactions to use allTransactions instead of transactions
+  const transactions = allTransactions
 
   // Debug: log serviceOrders in component
   console.log('🎨 RENDER - serviceOrders:', serviceOrders)
@@ -804,116 +859,6 @@ export function TokensSection() {
         </div>
       )}
 
-      {/* Historial de Transacciones */}
-      {transactions.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">Historial de Transacciones</h2>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="pb-3 text-xs font-medium text-muted-foreground">Fecha</th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground">Tipo</th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground">Agente</th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground">Estado</th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
-                    Tokens
-                  </th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
-                    Monto
-                  </th>
-                  <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.slice(0, 20).map((tx) => {
-                  const isPending = tx.type === 'purchase' && tx.payment_status === 'pending'
-
-                  return (
-                    <tr
-                      key={tx.id}
-                      className={cn(
-                        'border-b border-border/50 last:border-0',
-                        isPending && 'bg-amber-50/50 dark:bg-amber-950/10'
-                      )}
-                    >
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <TransactionIcon type={tx.type} />
-                          <span className="text-sm text-muted-foreground">
-                            {formatDate(tx.created_at)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <TransactionTypeBadge type={tx.type} />
-                      </td>
-                      <td className="py-3">
-                        <span className="text-sm text-foreground">
-                          {tx.agent_id || tx.description || '-'}
-                        </span>
-                      </td>
-                      <td className="py-3">
-                        <PaymentStatusBadge type={tx.type} paymentStatus={tx.payment_status} />
-                      </td>
-                      <td className="py-3 text-right">
-                        <span
-                          className={cn(
-                            'text-sm font-medium',
-                            tx.type === 'consumption' && 'text-red-600',
-                            tx.type === 'purchase' && !isPending && 'text-green-600',
-                            tx.type === 'purchase' && isPending && 'text-amber-600',
-                            tx.type === 'bonus' && 'text-purple-600',
-                            tx.type === 'refund' && 'text-blue-600'
-                          )}
-                        >
-                          {tx.type === 'consumption' ? '-' : '+'}
-                          {formatNumber(Math.abs(tx.tokens))}
-                        </span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm text-muted-foreground">
-                          {tx.amount_cop ? formatCurrency(tx.amount_cop) : '-'}
-                        </span>
-                      </td>
-                      <td className="py-3 text-right">
-                        {isPending && !tx.cancelled_at && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRetryPayment(tx.id)}
-                            disabled={retrying === tx.id}
-                            className="h-8 text-xs"
-                          >
-                            {retrying === tx.id ? (
-                              <>
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                Procesando...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-3 w-3 mr-1" />
-                                Reintentar
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* Servicios Profesionales */}
       {serviceOrders.length > 0 && (
         <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-4 border-purple-500 rounded-xl p-6">
@@ -1057,6 +1002,206 @@ export function TokensSection() {
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Historial de Transacciones */}
+      {allTransactions.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Historial de Transacciones</h2>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {filteredTransactions.length} {filteredTransactions.length === 1 ? 'transacción' : 'transacciones'}
+            </span>
+          </div>
+
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                Tipo de Transacción
+              </label>
+              <Select value={transactionTypeFilter} onValueChange={(value) => {
+                setTransactionTypeFilter(value)
+                setCurrentPage(1)
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos los tipos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los tipos</SelectItem>
+                  <SelectItem value="purchase">Compra</SelectItem>
+                  <SelectItem value="consumption">Consumo</SelectItem>
+                  <SelectItem value="bonus">Bonus</SelectItem>
+                  <SelectItem value="refund">Reembolso</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                Periodo
+              </label>
+              <Select value={transactionDateFilter} onValueChange={(value) => {
+                setTransactionDateFilter(value)
+                setCurrentPage(1)
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todo el tiempo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todo el tiempo</SelectItem>
+                  <SelectItem value="today">Hoy</SelectItem>
+                  <SelectItem value="week">Última semana</SelectItem>
+                  <SelectItem value="month">Último mes</SelectItem>
+                  <SelectItem value="year">Último año</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {filteredTransactions.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="bg-muted/50 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <AlertCircle className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                No se encontraron transacciones con los filtros seleccionados
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      <th className="pb-3 text-xs font-medium text-muted-foreground">Fecha</th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground">Tipo</th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground">Agente</th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground">Estado</th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
+                        Tokens
+                      </th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
+                        Monto
+                      </th>
+                      <th className="pb-3 text-xs font-medium text-muted-foreground text-right">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedTransactions.map((tx) => {
+                      const isPending = tx.type === 'purchase' && tx.payment_status === 'pending'
+
+                      return (
+                        <tr
+                          key={tx.id}
+                          className={cn(
+                            'border-b border-border/50 last:border-0',
+                            isPending && 'bg-amber-50/50 dark:bg-amber-950/10'
+                          )}
+                        >
+                          <td className="py-3">
+                            <div className="flex items-center gap-3">
+                              <TransactionIcon type={tx.type} />
+                              <span className="text-sm text-muted-foreground">
+                                {formatDate(tx.created_at)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3">
+                            <TransactionTypeBadge type={tx.type} />
+                          </td>
+                          <td className="py-3">
+                            <span className="text-sm text-foreground">
+                              {tx.agent_id || tx.description || '-'}
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            <PaymentStatusBadge type={tx.type} paymentStatus={tx.payment_status} />
+                          </td>
+                          <td className="py-3 text-right">
+                            <span
+                              className={cn(
+                                'text-sm font-medium',
+                                tx.type === 'consumption' && 'text-red-600',
+                                tx.type === 'purchase' && !isPending && 'text-green-600',
+                                tx.type === 'purchase' && isPending && 'text-amber-600',
+                                tx.type === 'bonus' && 'text-purple-600',
+                                tx.type === 'refund' && 'text-blue-600'
+                              )}
+                            >
+                              {tx.type === 'consumption' ? '-' : '+'}
+                              {formatNumber(Math.abs(tx.tokens))}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            <span className="text-sm text-muted-foreground">
+                              {tx.amount_cop ? formatCurrency(tx.amount_cop) : '-'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            {isPending && !tx.cancelled_at && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRetryPayment(tx.id)}
+                                disabled={retrying === tx.id}
+                                className="h-8 text-xs"
+                              >
+                                {retrying === tx.id ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Procesando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-3 w-3 mr-1" />
+                                    Reintentar
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
+                  <div className="text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
