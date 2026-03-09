@@ -1159,11 +1159,6 @@ export function TokensSection() {
                     <span className="text-3xl font-bold text-purple-900 dark:text-purple-100">
                       {formatCurrency(selectedService.price_cop)}
                     </span>
-                    {selectedService.price_usd && (
-                      <span className="text-lg text-purple-700 dark:text-purple-300">
-                        ≈ ${selectedService.price_usd} USD
-                      </span>
-                    )}
                   </div>
                 </div>
 
