@@ -24,6 +24,8 @@ import {
   Calendar,
   CreditCard,
   RefreshCw,
+  FileText,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -92,6 +94,9 @@ interface ServiceOrder {
   payment_status: 'pending' | 'paid' | 'cancelled' | 'refunded'
   service_status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
   created_at: string
+  paid_at?: string | null
+  updated_at?: string | null
+  attachment_url?: string | null
   service?: {
     display_name: string
     description: string
@@ -1196,6 +1201,54 @@ export function TokensSection() {
                     </div>
                   )}
                 </div>
+
+                {/* Adjuntos */}
+                {selectedService.attachment_url && (
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Adjuntos
+                    </h4>
+                    <div className="flex items-center justify-between bg-background rounded-lg p-3 border">
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {selectedService.attachment_url.split('-').pop()}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Documento adjunto</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const { data, error } = await supabase.storage
+                              .from('service-orders')
+                              .download(selectedService.attachment_url!)
+
+                            if (error) throw error
+
+                            const url = URL.createObjectURL(data)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = selectedService.attachment_url!.split('/').pop() || 'adjunto.pdf'
+                            document.body.appendChild(a)
+                            a.click()
+                            document.body.removeChild(a)
+                            URL.revokeObjectURL(url)
+                          } catch (error: any) {
+                            console.error('Error downloading file:', error)
+                          }
+                        }}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Descargar
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Botón de pago si está pendiente */}
                 {selectedService.payment_status === 'pending' && (
