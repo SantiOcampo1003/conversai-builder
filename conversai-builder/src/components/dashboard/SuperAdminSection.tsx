@@ -210,12 +210,19 @@ export function SuperAdminSection() {
   const { data: clients = [], isLoading: loadingClients } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
+      console.log('🔍 SUPER ADMIN - Fetching clients...')
       const { data, error } = await supabase
         .from('clients')
         .select('id, name, email, company_name, phone, created_at')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ SUPER ADMIN - Error fetching clients:', error)
+        throw error
+      }
+
+      console.log('✅ SUPER ADMIN - Clients loaded:', data)
+      console.log('✅ SUPER ADMIN - Clients count:', data?.length || 0)
       return data as Client[]
     },
     staleTime: 1000,
