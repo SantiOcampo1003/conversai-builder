@@ -59,7 +59,7 @@ export function createMetaTrackingTool(
    ✅ Llama cuando:
    - Usuario pregunta por precio, costo, caracteristicas
    - Solicita informacion detallada del producto/servicio
-   - Muestra interes comercial claro
+   - Muestra interes
 
    Ejemplos:
    ✅ "¿Cuanto cuesta el curso?"
@@ -68,9 +68,7 @@ export function createMetaTrackingTool(
    ✅ "Quiero informacion sobre..."
 
    ❌ NO llames si:
-   - "Tal vez me interese" (dudoso)
-   - "No me interesa" (negativo)
-   - Solo pregunta algo general`,
+   - "No me interesa" (negativo)`,
 
     SubmitApplication: `
 💳 **Event: "SubmitApplication"** (Max: {max}/usuario)
@@ -78,19 +76,19 @@ export function createMetaTrackingTool(
 
    ✅ Llama cuando:
    - Usuario CONFIRMA que quiere comprar/adquirir
-   - Solicita link de pago o como proceder
+   - Solicita link o como proceder
    - Dice explicitamente "si quiero", "adelante", "proceder"
 
    Ejemplos:
    ✅ "Si, quiero comprarlo"
-   ✅ "Dame el link de pago"
+   ✅ "Dame el link"
    ✅ "¿Como procedo con la compra?"
    ✅ "Confirmo, adelante"
 
    ❌ NO llames si:
    - "Lo voy a pensar" (no confirma)
    - "Tal vez despues" (no confirma)
-   - Solo pregunta como comprar (usa Lead en ese caso)`,
+   - Solo pregunta como comprar (usa el vento de Lead en ese caso)`,
 
     HotmartLinkSent: `
 🔗 **Event: "HotmartLinkSent"** (Max: {max}/usuario)
@@ -101,7 +99,7 @@ export function createMetaTrackingTool(
    - Compartes link de pago con el usuario
 
    Ejemplos:
-   ✅ Cuando escribes: "Aqui el link: hotmart.com/curso-python"
+   ✅ Cuando escribes: "Aqui el link: hotmart.com/curso"
    ✅ Cuando incluyes: "Paga aqui: pay.hotmart.com/..."
 
    ❌ NO llames si:
