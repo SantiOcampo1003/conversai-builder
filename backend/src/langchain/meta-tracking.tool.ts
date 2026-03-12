@@ -36,75 +36,22 @@ export function createMetaTrackingTool(
   // Construir descripcion dinamica por evento
   const eventGuides: Record<MetaEventName, string> = {
     Contact: `
-📞 **Event: "Contact"** (Max: {max}/usuario)
-   Descripcion: {description}
-
-   ✅ Llama cuando:
-   - Es el PRIMER mensaje del usuario en esta conversacion
-   - Usuario inicia contacto (puede ser despues de ver un anuncio)
-
-   Ejemplos:
-   ✅ "Hola, vi tu anuncio en Facebook"
-   ✅ "Buenos dias, me interesa tu servicio"
-   ✅ "Hola" (si es el primer mensaje)
-
-   ❌ NO llames si:
-   - Ya registraste Contact anteriormente
-   - No es el primer mensaje del usuario`,
+📞 Contact (Max: {max}/usuario): {description}
+   - DETECTADO AUTOMATICAMENTE - No llames esta tool para este evento`,
 
     Lead: `
-🎯 **Event: "Lead"** (Max: {max}/usuario)
-   Descripcion: {description}
-
-   ✅ Llama cuando:
-   - Usuario pregunta por precio, costo, caracteristicas
-   - Solicita informacion detallada del producto/servicio
-   - Muestra interes
-
-   Ejemplos:
-   ✅ "¿Cuanto cuesta el curso?"
-   ✅ "Me interesa, dime mas"
-   ✅ "¿Que incluye el paquete?"
-   ✅ "Quiero informacion sobre..."
-
-   ❌ NO llames si:
-   - "No me interesa" (negativo)`,
+🎯 Lead (Max: {max}/usuario): {description}
+   ✅ Llama cuando: Usuario pregunta precios o muestra interés comercial
+   ❌ No llames si: Mensaje negativo o sin interés claro`,
 
     SubmitApplication: `
-💳 **Event: "SubmitApplication"** (Max: {max}/usuario)
-   Descripcion: {description}
-
-   ✅ Llama cuando:
-   - Usuario CONFIRMA que quiere comprar/adquirir
-   - Solicita link o como proceder
-   - Dice explicitamente "si quiero", "adelante", "proceder"
-
-   Ejemplos:
-   ✅ "Si, quiero comprarlo"
-   ✅ "Dame el link"
-   ✅ "¿Como procedo con la compra?"
-   ✅ "Confirmo, adelante"
-
-   ❌ NO llames si:
-   - "Lo voy a pensar" (no confirma)
-   - "Tal vez despues" (no confirma)
-   - Solo pregunta como comprar (usa el vento de Lead en ese caso)`,
+💳 SubmitApplication (Max: {max}/usuario): {description}
+   ✅ Llama cuando: Usuario confirma compra o pide proceder con pago
+   ❌ No llames si: Usuario dice "lo pensaré" o no confirma`,
 
     HotmartLinkSent: `
-🔗 **Event: "HotmartLinkSent"** (Max: {max}/usuario)
-   Descripcion: {description}
-
-   ✅ Llama cuando:
-   - VAS A INCLUIR un enlace de Hotmart/Eduzz en TU respuesta
-   - Compartes link de pago con el usuario
-
-   Ejemplos:
-   ✅ Cuando escribes: "Aqui el link: hotmart.com/curso"
-   ✅ Cuando incluyes: "Paga aqui: pay.hotmart.com/..."
-
-   ❌ NO llames si:
-   - Solo mencionas que existe un link (sin enviarlo)
-   - Usuario te pregunta por el link (pero no lo envias aun)`,
+🔗 HotmartLinkSent (Max: {max}/usuario): {description}
+   - DETECTADO AUTOMATICAMENTE - No llames esta tool para este evento`,
   };
 
   // Construir descripcion completa de la tool
@@ -117,26 +64,15 @@ export function createMetaTrackingTool(
     })
     .join('\n\n---\n');
 
-  const fullDescription = `Registra eventos de conversion para optimizar campañas publicitarias de Meta Ads.
+  const fullDescription = `Registra eventos de conversión para Meta Ads.
 
-⚠️ EVENTOS HABILITADOS PARA ESTE AGENTE:
-
+EVENTOS HABILITADOS:
 ${eventDescriptions}
 
----
-
-📋 REGLAS GENERALES:
-1. Llama esta herramienta ANTES de enviar tu respuesta al usuario
-2. Solo puedes usar eventos de la lista de arriba (los habilitados)
-3. Confianza minima: 0.7 (70%) - Si no estas seguro, NO llames
-4. Respeta los limites maximos por usuario
-5. Usa "context" para explicar brevemente POR QUE detectaste este evento
-
-❌ NUNCA USES ESTA HERRAMIENTA SI:
-- El evento no esta en la lista de habilitados arriba
-- Tu confianza es menor a 0.7
-- El usuario dice "no", "tal vez", "despues"
-- Ya se alcanzo el maximo de envios para ese evento`;
+REGLAS:
+- Confianza mínima: 70%
+- Respeta límites por usuario
+- NO uses si el usuario dice "no", "tal vez" o "después"`;
 
   // Crear enum dinamico con los eventos habilitados
   const enabledEventNames = enabledEvents.map(e => e.event);

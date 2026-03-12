@@ -64,27 +64,11 @@ Tienes acceso a una herramienta para guardar información del cliente.
 
   // Meta Ads tracking tool (solo si está habilitado)
   if (options?.hasMetaAds) {
-    toolInstructions += `\n=== HERRAMIENTA: EVENTOS DE CONVERSIÓN META ADS ===
-Tienes acceso a una herramienta para registrar eventos importantes de conversión (Lead, SubmitApplication).
-⚠️ IMPORTANTE: Usa esta herramienta SOLO cuando detectes intenciones CLARAS de conversión:
-
-✅ Cuándo usar "Lead":
-- Cliente muestra interés comercial explícito: "Me interesa", "Quiero saber más", "Me gustaría cotizar"
-- Cliente pregunta por precios, planes o detalles comerciales específicos
-- Cliente solicita información detallada sobre un producto/servicio
-
-✅ Cuándo usar "SubmitApplication":
-- Cliente solicita avanzar con una compra: "Quiero comprarlo", "Cómo procedo con el pago"
-- Cliente pide inscribirse/registrarse: "Quiero inscribirme", "Cómo me registro"
-- Cliente está listo para la transacción: "Acepto", "Adelante con la compra"
-
-❌ NO uses la herramienta para:
-- Saludos simples ("Hola", "Qué tal")
-- Preguntas generales sin intención de compra ("¿Qué venden?")
-- Respuestas cortas ("Sí", "No", "Ok")
-- Conversación casual sin interés comercial claro
-
-NOTA: Los eventos "Contact" y "HotmartLinkSent" se detectan automáticamente, NO necesitas llamar la herramienta para ellos.
+    toolInstructions += `\n=== EVENTOS DE CONVERSIÓN ===
+Usa la herramienta de eventos cuando:
+✅ "Lead": Cliente pregunta precios o muestra interés comercial
+✅ "SubmitApplication": Cliente confirma compra o solicita proceder con pago
+❌ NO uses para saludos, preguntas generales o respuestas cortas
 `;
   }
 
