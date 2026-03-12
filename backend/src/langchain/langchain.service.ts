@@ -54,18 +54,13 @@ export class LangchainService {
 
     console.log(`💬 Mensajes convertidos: ${messages.length}`);
 
-    // 4. Configurar modelo
-    const model = new ChatOpenAI({
+    // 4. Configurar modelo base (sin tools aún)
+    const baseModelConfig = {
       modelName: agent.model || 'gpt-4-turbo',
       temperature: agent.temperature ?? 0.7,
       maxTokens: agent.max_tokens ?? 500,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
-      // Habilitar llamadas paralelas a tools (reduce iteraciones)
-      // Soportado por: gpt-4-turbo, gpt-4o, gpt-3.5-turbo (Nov 2023+)
-      modelKwargs: {
-        parallel_tool_calls: true, // El modelo puede llamar múltiples tools a la vez
-      },
-    });
+    };
 
     // 5. Token tracking
     const tokenCounter = new TokenCounterCallback();
@@ -113,6 +108,16 @@ export class LangchainService {
 
     // 6. Si hay tools, usar AgentExecutor
     if (tools.length > 0) {
+      // Configurar modelo con parallel_tool_calls solo cuando hay tools
+      const model = new ChatOpenAI({
+        ...baseModelConfig,
+        // Habilitar llamadas paralelas a tools (reduce iteraciones)
+        // Soportado por: gpt-4-turbo, gpt-4o, gpt-3.5-turbo (Nov 2023+)
+        modelKwargs: {
+          parallel_tool_calls: true, // El modelo puede llamar múltiples tools a la vez
+        },
+      });
+
       // Crear react agent con createAgent de langchain
       const customAgent = createAgent({
         model,
@@ -166,7 +171,9 @@ export class LangchainService {
       };
     }
 
-    // 7. Sin tools, usar chain simple
+    // 7. Sin tools, usar chain simple (sin parallel_tool_calls)
+    const model = new ChatOpenAI(baseModelConfig);
+
     const prompt = ChatPromptTemplate.fromMessages([
       ['system', businessInfo],
       new MessagesPlaceholder('chat_history'),
