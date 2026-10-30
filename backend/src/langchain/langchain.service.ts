@@ -11,6 +11,7 @@ import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { createSendFileTool } from './agent-assets.tool';
+import { resolveModelName } from './model.config';
 import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
 import { DatabaseService } from '../database/database.service';
 import { createAgent } from 'langchain';
@@ -65,7 +66,7 @@ export class LangchainService {
 
     // 4. Configurar modelo base (sin tools aún)
     const baseModelConfig = {
-      modelName: agent.model || 'gpt-4-turbo',
+      modelName: resolveModelName(agent.model, this.configService.get<string>('OPENAI_MODEL')),
       temperature: agent.temperature ?? 0.7,
       maxTokens: agent.max_tokens ?? 500,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
