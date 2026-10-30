@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, Image as ImageIcon, Loader2, Paperclip, Plus, Trash2, Upload } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,58 +18,27 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import {
+  AgentAssetRow,
+  IMAGE_TYPES,
+  PDF_TYPES,
+  deleteAgentAsset,
+  formatSize,
+  listAgentAssets,
+  setAssetActive,
+  toKey,
+  uploadAgentAsset,
+  validateAssetFile,
+} from '@/lib/agent-assets'
 
-const BUCKET = 'agent-assets'
-const MAX_BYTES = 20 * 1024 * 1024
-const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-const NO_PRODUCT = '__none'
-
-interface AgentAssetRow {
-  id: string
-  asset_key: string
-  kind: 'image' | 'document'
-  title: string
-  caption: string | null
-  send_when: string
-  product_ref: string | null
-  storage_path: string
-  public_url: string
-  file_name: string | null
-  mime_type: string | null
-  size_bytes: number | null
-  active: boolean
-}
+const ACCEPTED = [...PDF_TYPES, ...IMAGE_TYPES]
 
 interface Props {
   agentId: string
   clientId: string
-  productNames: string[]
 }
 
-/** "Brochure Cantera 2027" -> "brochure_cantera_2027" (clave que ve el modelo). */
-function toKey(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 60)
-}
-
-function toSafeFileName(name: string): string {
-  const dot = name.lastIndexOf('.')
-  const base = dot > 0 ? name.slice(0, dot) : name
-  const ext = dot > 0 ? name.slice(dot).toLowerCase() : ''
-  return `${toKey(base) || 'archivo'}${ext}`
-}
-
-function formatSize(bytes: number | null): string {
-  if (!bytes) return ''
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
-}
-
-export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
+export function AgentAssetsSection({ agentId, clientId }: Props) {
   const { toast } = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -87,22 +54,17 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
   const [keyTouched, setKeyTouched] = useState(false)
   const [sendWhen, setSendWhen] = useState('')
   const [caption, setCaption] = useState('')
-  const [productRef, setProductRef] = useState(NO_PRODUCT)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('agent_assets')
-      .select('*')
-      .eq('agent_id', agentId)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true })
-    if (error) {
-      setLoadError(error.message)
-      setAssets([])
-    } else {
+    try {
+      // Las fotos de producto se gestionan en la sección Productos
+      const rows = await listAgentAssets(agentId)
+      setAssets(rows.filter(r => !r.product_id))
       setLoadError(null)
-      setAssets((data ?? []) as AgentAssetRow[])
+    } catch (err) {
+      setLoadError((err as { message?: string }).message ?? 'Error desconocido')
+      setAssets([])
     }
     setLoading(false)
   }, [agentId])
@@ -111,18 +73,15 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
 
   const resetForm = () => {
     setFile(null); setTitle(''); setAssetKey(''); setKeyTouched(false)
-    setSendWhen(''); setCaption(''); setProductRef(NO_PRODUCT)
+    setSendWhen(''); setCaption('')
     if (fileInput.current) fileInput.current.value = ''
   }
 
   const onPickFile = (picked: File | null) => {
     if (!picked) return
-    if (!ACCEPTED.includes(picked.type)) {
-      toast({ title: 'Formato no permitido', description: 'Sube una imagen (JPG, PNG, WebP) o un PDF.', variant: 'destructive' })
-      return
-    }
-    if (picked.size > MAX_BYTES) {
-      toast({ title: 'Archivo muy pesado', description: 'El máximo es 20 MB.', variant: 'destructive' })
+    const problem = validateAssetFile(picked, ACCEPTED)
+    if (problem) {
+      toast({ title: 'Archivo no válido', description: problem, variant: 'destructive' })
       return
     }
     setFile(picked)
@@ -133,52 +92,31 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
     }
   }
 
-  const isImage = file?.type.startsWith('image/') ?? false
   const canSave = !!file && title.trim() !== '' && assetKey !== '' && sendWhen.trim() !== '' && !saving
 
   const handleSave = async () => {
     if (!file || !canSave) return
     setSaving(true)
-    const path = `${clientId}/${agentId}/${Date.now()}-${toSafeFileName(file.name)}`
-
     try {
-      const { error: upError } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false })
-      if (upError) throw upError
-
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-
-      const { error: insError } = await supabase.from('agent_assets').insert({
-        agent_id: agentId,
-        asset_key: assetKey,
-        kind: isImage ? 'image' : 'document',
-        title: title.trim(),
-        caption: caption.trim() || null,
-        send_when: sendWhen.trim(),
-        product_ref: isImage && productRef !== NO_PRODUCT ? productRef : null,
-        storage_path: path,
-        public_url: pub.publicUrl,
-        file_name: isImage ? null : file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        sort_order: assets.length,
+      await uploadAgentAsset({
+        agentId,
+        clientId,
+        file,
+        title,
+        assetKey,
+        sendWhen,
+        caption,
+        sortOrder: assets.length,
       })
-      if (insError) {
-        await supabase.storage.from(BUCKET).remove([path]) // no dejar el archivo huérfano
-        throw insError
-      }
-
       toast({ title: 'Archivo agregado', description: `El agente podrá enviar "${title.trim()}".` })
       resetForm()
       setShowForm(false)
       await load()
     } catch (err) {
       const e = err as { code?: string; message?: string }
-      const duplicated = e.code === '23505'
       toast({
         title: 'No se pudo guardar',
-        description: duplicated ? `Ya existe un archivo con la clave "${assetKey}". Cámbiala.` : (e.message ?? 'Error desconocido'),
+        description: e.code === '23505' ? `Ya existe un archivo con la clave "${assetKey}". Cámbiala.` : (e.message ?? 'Error desconocido'),
         variant: 'destructive',
       })
     } finally {
@@ -188,30 +126,31 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
 
   const toggleActive = async (row: AgentAssetRow, active: boolean) => {
     setAssets(prev => prev.map(a => (a.id === row.id ? { ...a, active } : a)))
-    const { error } = await supabase.from('agent_assets').update({ active }).eq('id', row.id)
-    if (error) {
+    try {
+      await setAssetActive(row.id, active)
+    } catch (err) {
       setAssets(prev => prev.map(a => (a.id === row.id ? { ...a, active: row.active } : a)))
-      toast({ title: 'No se pudo actualizar', description: error.message, variant: 'destructive' })
+      toast({ title: 'No se pudo actualizar', description: (err as { message?: string }).message, variant: 'destructive' })
     }
   }
 
   const remove = async (row: AgentAssetRow) => {
-    const { error } = await supabase.from('agent_assets').delete().eq('id', row.id)
-    if (error) {
-      toast({ title: 'No se pudo eliminar', description: error.message, variant: 'destructive' })
-      return
+    try {
+      await deleteAgentAsset(row)
+      setAssets(prev => prev.filter(a => a.id !== row.id))
+    } catch (err) {
+      toast({ title: 'No se pudo eliminar', description: (err as { message?: string }).message, variant: 'destructive' })
     }
-    await supabase.storage.from(BUCKET).remove([row.storage_path])
-    setAssets(prev => prev.filter(a => a.id !== row.id))
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-border bg-secondary/30 p-4 text-sm text-muted-foreground">
-        Sube imágenes (por ejemplo fotos de productos) y PDFs (brochures, catálogos). Para cada archivo indica
-        <strong className="text-foreground"> cuándo debe enviarlo el agente</strong>, por ejemplo:
-        <em> "cuando el cliente pregunte por la convocatoria"</em> o <em>"cuando pida ver el producto"</em>.
-        El agente lo envía por WhatsApp después de su respuesta y no lo repite en la misma conversación.
+        Sube <strong className="text-foreground">PDFs</strong> (brochures, catálogos, listas) y, si hace falta, imágenes generales.
+        Para cada archivo describe <strong className="text-foreground">en qué momento debe enviarlo el agente</strong>, por ejemplo:
+        <em> "cuando el cliente pregunte por la convocatoria"</em>. El agente lo envía por WhatsApp después de su respuesta
+        y no lo repite en la misma conversación.
+        <span className="block mt-2">Las <strong className="text-foreground">fotos de productos</strong> se suben en la sección Productos, junto a cada producto.</span>
       </div>
 
       {loadError && (
@@ -239,14 +178,13 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-medium text-foreground truncate">{row.title}</p>
               <Badge variant="secondary" className="font-mono text-[10px]">{row.asset_key}</Badge>
-              {row.product_ref && <Badge variant="outline" className="text-[10px]">{row.product_ref}</Badge>}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               <span className="font-medium text-foreground/80">Enviar cuando:</span> {row.send_when}
             </p>
             {row.caption && <p className="text-xs text-muted-foreground mt-0.5">Texto: {row.caption}</p>}
             <p className="text-[10px] text-muted-foreground/70 mt-1">
-              {row.kind === 'image' ? 'Imagen' : 'PDF'} {formatSize(row.size_bytes) && `· ${formatSize(row.size_bytes)}`}
+              {row.kind === 'image' ? 'Imagen' : 'PDF'}{formatSize(row.size_bytes) && ` · ${formatSize(row.size_bytes)}`}
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -283,7 +221,7 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
       ) : (
         <div className="rounded-xl border border-border p-4 flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label>Archivo (imagen o PDF, máx. 20 MB)</Label>
+            <Label>Archivo (PDF o imagen, máx. 20 MB)</Label>
             <input
               ref={fileInput}
               type="file"
@@ -295,9 +233,6 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
               {file ? <Paperclip className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
               {file ? file.name : 'Elegir archivo'}
             </Button>
-            {file && isImage && (
-              <img src={URL.createObjectURL(file)} alt="Vista previa" className="h-24 w-24 rounded-lg object-cover" />
-            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -307,7 +242,7 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
                 id="asset-title"
                 value={title}
                 onChange={e => { setTitle(e.target.value); if (!keyTouched) setAssetKey(toKey(e.target.value)) }}
-                placeholder="Brochure Cantera 2027"
+                placeholder="Brochure de servicios"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -316,19 +251,19 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
                 id="asset-key"
                 value={assetKey}
                 onChange={e => { setKeyTouched(true); setAssetKey(toKey(e.target.value)) }}
-                placeholder="brochure_cantera"
+                placeholder="brochure_servicios"
                 className="font-mono"
               />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="asset-when">¿Cuándo debe enviarlo el agente?</Label>
+            <Label htmlFor="asset-when">¿En qué momento debe enviarlo el agente?</Label>
             <Textarea
               id="asset-when"
               value={sendWhen}
               onChange={e => setSendWhen(e.target.value)}
-              placeholder="Cuando el cliente pregunte por la convocatoria o quiera más información de Cantera"
+              placeholder="Cuando el cliente pregunte por los servicios o pida más información"
               rows={2}
             />
           </div>
@@ -342,19 +277,6 @@ export function AgentAssetsSection({ agentId, clientId, productNames }: Props) {
               placeholder="Aquí tienes el brochure con toda la información"
             />
           </div>
-
-          {isImage && productNames.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label>Producto al que pertenece (opcional)</Label>
-              <Select value={productRef} onValueChange={setProductRef}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PRODUCT}>Ninguno</SelectItem>
-                  {productNames.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={!canSave} size="sm" className="gap-2">

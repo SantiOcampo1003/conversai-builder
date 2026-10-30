@@ -43,7 +43,7 @@ export class LangchainService {
     console.log(`🔍 Meta Ads config loaded:`, metaConfig ? `enabled=${metaConfig.is_enabled}` : 'null');
 
     // 1.5. Cargar archivos enviables del agente (imágenes / PDFs)
-    const { assets, sentKeys } = await this.getAgentAssets(agent.agent_id, userId);
+    const { assets, sentKeys } = await this.getAgentAssets(agent.agent_id, userId, agent.products);
     const outbox: OutboundFile[] = [];
 
     // 2. Construir businessInfo (con info de Meta Ads y archivos si están habilitados)
@@ -232,13 +232,14 @@ export class LangchainService {
   private async getAgentAssets(
     agentId: string,
     userId: string,
+    products: Agent['products'],
   ): Promise<{ assets: AgentAsset[]; sentKeys: Set<string> }> {
     try {
       const supabase = this.databaseService.getAdminClient();
 
       const { data: assets, error } = await supabase
         .from('agent_assets')
-        .select('asset_key, kind, title, caption, send_when, product_ref, public_url, file_name, mime_type')
+        .select('asset_key, kind, title, caption, send_when, product_id, public_url, file_name, mime_type')
         .eq('agent_id', agentId)
         .eq('active', true)
         .order('sort_order', { ascending: true });
@@ -254,8 +255,12 @@ export class LangchainService {
         .eq('agent_id', agentId)
         .eq('user_id', userId);
 
+      // Ignorar fotos cuyo producto ya no existe en el agente
+      const productIds = new Set((products ?? []).map((p) => p.id));
+      const usable = (assets as AgentAsset[]).filter((a) => !a.product_id || productIds.has(a.product_id));
+
       return {
-        assets: assets as AgentAsset[],
+        assets: usable,
         sentKeys: new Set((sent || []).map((r: { asset_key: string }) => r.asset_key)),
       };
     } catch (err) {

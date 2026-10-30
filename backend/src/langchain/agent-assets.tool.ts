@@ -2,6 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { DatabaseService } from '../database/database.service';
 import { AgentAsset, OutboundFile } from '../common/types/agent.types';
+import { MAX_FILES_PER_REPLY } from './prompt.builder';
 
 /**
  * Herramienta para que el agente decida enviar un archivo (imagen o PDF) al cliente.
@@ -34,6 +35,9 @@ El archivo llega al cliente junto con tu respuesta de texto: no pegues enlaces e
       const asset = byKey.get(asset_key);
       if (!asset) {
         return `La clave "${asset_key}" no existe. No envíes nada.`;
+      }
+      if (outbox.length >= MAX_FILES_PER_REPLY) {
+        return `Ya se enviaron ${MAX_FILES_PER_REPLY} archivos en esta respuesta (el máximo). No envíes más; ofrece enviar el resto si el cliente lo pide.`;
       }
       if (alreadySent.has(asset_key)) {
         return `El archivo "${asset.title}" ya se le envió a este cliente antes. No lo vuelvas a enviar; si hace falta, menciónalo en tu respuesta.`;

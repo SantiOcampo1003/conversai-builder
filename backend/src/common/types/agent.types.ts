@@ -36,6 +36,7 @@ export interface PriceRange {
 }
 
 export interface Product {
+  id?: string; // id estable; liga las fotos de agent_assets con el producto
   name: string;
   price: string;
   description?: string;
@@ -74,8 +75,8 @@ export interface AgentAsset {
   kind: 'image' | 'document';
   title: string;
   caption: string | null;
-  send_when: string;
-  product_ref: string | null;
+  send_when: string | null; // null solo en fotos de producto (se usa una regla por defecto)
+  product_id: string | null; // agents.products[].id al que pertenece la foto
   public_url: string;
   file_name: string | null;
   mime_type: string | null;

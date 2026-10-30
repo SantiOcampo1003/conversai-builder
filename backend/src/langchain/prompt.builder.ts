@@ -1,15 +1,31 @@
 import { Agent, AgentAsset } from '../common/types/agent.types';
 
+/** Regla por defecto para fotos de producto sin condición propia. */
+export const DEFAULT_PRODUCT_PHOTO_WHEN =
+  'el cliente pida ver el producto, quiera saber cómo es o muestre interés claro en comprarlo';
+
+export const MAX_FILES_PER_REPLY = 3;
+
 export function buildBusinessInfo(
   agent: Agent,
   options?: { hasMetaAds?: boolean; assets?: AgentAsset[]; sentAssetKeys?: string[] },
 ): string {
+  // Fotos de producto disponibles (agent_assets con product_id)
+  const photoKeysByProduct = new Map<string, string[]>();
+  for (const a of options?.assets ?? []) {
+    if (!a.product_id) continue;
+    photoKeysByProduct.set(a.product_id, [...(photoKeysByProduct.get(a.product_id) ?? []), a.asset_key]);
+  }
+  const productName = (id: string) => agent.products?.find((p) => p.id === id)?.name;
+
   // Formatear productos
   const products = agent.products
     ?.map((p) => {
       let info = `- ${p.name}: ${p.price}`;
       if (p.description) info += `\n  ${p.description}`;
       if (p.image_url) info += `\n  🖼️ Ver imagen: ${p.image_url}`;
+      const photos = p.id ? photoKeysByProduct.get(p.id) : undefined;
+      if (photos?.length) info += `\n  📷 Fotos para enviar con send_file: ${photos.join(', ')}`;
       return info;
     })
     .join('\n\n') || 'No hay productos configurados';
@@ -70,8 +86,9 @@ Tienes acceso a una herramienta para guardar información del cliente.
     const list = options.assets
       .map((a) => {
         const tipo = a.kind === 'image' ? 'imagen' : 'PDF';
-        const producto = a.product_ref ? ` (foto de ${a.product_ref})` : '';
-        return `- ${a.asset_key} [${tipo}]${producto}: ${a.title}\n  Enviar cuando: ${a.send_when}`;
+        const producto = a.product_id ? ` (foto de ${productName(a.product_id) ?? 'un producto'})` : '';
+        const cuando = a.send_when?.trim() || DEFAULT_PRODUCT_PHOTO_WHEN;
+        return `- ${a.asset_key} [${tipo}]${producto}: ${a.title}\n  Enviar cuando: ${cuando}`;
       })
       .join('\n');
     const sent = options.sentAssetKeys?.length
@@ -80,7 +97,7 @@ Tienes acceso a una herramienta para guardar información del cliente.
     toolInstructions += `\n=== ARCHIVOS DISPONIBLES ===
 Tienes la herramienta send_file para enviar estos archivos al cliente:
 ${list}${sent}
-⚠️ Úsala SOLO cuando se cumpla la condición "Enviar cuando". El archivo llega junto con tu respuesta: no pegues enlaces ni digas que "adjuntas" algo que no enviaste con la herramienta. Escribe además un mensaje breve que lo acompañe.
+⚠️ Úsala SOLO cuando se cumpla la condición "Enviar cuando" (máximo ${MAX_FILES_PER_REPLY} archivos por respuesta). El archivo llega junto con tu respuesta: no pegues enlaces ni digas que "adjuntas" algo que no enviaste con la herramienta. Escribe además un mensaje breve que lo acompañe.
 `;
   }
 
