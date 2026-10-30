@@ -9,6 +9,7 @@ import {
   ChatHistoryEntry,
 } from '../common/types/agent.types';
 import { MetaAdsClient } from '../langchain/meta-ads.client';
+import { resolveHistoryLimit } from './history.config';
 
 @Injectable()
 export class ChatService {
@@ -95,7 +96,7 @@ export class ChatService {
       .eq('agent_id', agentId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(resolveHistoryLimit(this.configService.get<string>('CHAT_HISTORY_LIMIT')));
 
     if (historyError) {
       console.error('❌ Error cargando historial:', historyError);

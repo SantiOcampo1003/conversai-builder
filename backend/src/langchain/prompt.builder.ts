@@ -6,9 +6,45 @@ export const DEFAULT_PRODUCT_PHOTO_WHEN =
 
 export const MAX_FILES_PER_REPLY = 3;
 
+const normKey = (k: string) => k.toLowerCase().trim();
+
+/**
+ * Estado de la recogida de datos de este cliente: qué ya está guardado y qué falta.
+ * Se calcula en código para que el modelo no dependa de recordar la conversación completa
+ * (con historial largo olvidaba datos y cerraba antes de tiempo).
+ */
+export function buildLeadState(
+  requiredInfo: string[] | null | undefined,
+  leadData?: Record<string, unknown> | null,
+): string {
+  if (!requiredInfo || requiredInfo.length === 0) return '';
+
+  const saved = new Map<string, string>();
+  for (const [k, v] of Object.entries(leadData ?? {})) {
+    const value = typeof v === 'string' ? v.trim() : v == null ? '' : String(v);
+    if (value) saved.set(normKey(k), value);
+  }
+
+  const lines = [...saved.entries()].map(([k, v]) => `- ${k}: ${v}`);
+  const pending = requiredInfo.filter((k) => !saved.has(normKey(k)));
+
+  return `\n=== ESTADO DE ESTE CLIENTE (datos ya guardados) ===
+Guardados:
+${lines.length ? lines.join('\n') : '- (ninguno todavía)'}
+Pendientes: ${pending.length ? pending.join(', ') : 'ninguno'}
+⚠️ Toma los datos guardados como ciertos y NO los vuelvas a preguntar. Si hay datos pendientes y la persona no se ha negado a darlos, pregunta el siguiente pendiente (una pregunta por mensaje) y NO envíes todavía el mensaje de cierre.
+`;
+}
+
 export function buildBusinessInfo(
   agent: Agent,
-  options?: { hasMetaAds?: boolean; assets?: AgentAsset[]; sentAssetKeys?: string[] },
+  options?: {
+    hasMetaAds?: boolean;
+    assets?: AgentAsset[];
+    sentAssetKeys?: string[];
+    /** Datos del cliente ya guardados (leads.additional_fields). */
+    leadData?: Record<string, unknown> | null;
+  },
 ): string {
   // Fotos de producto disponibles (agent_assets con product_id)
   const photoKeysByProduct = new Map<string, string[]>();
@@ -111,6 +147,8 @@ Usa la herramienta de eventos cuando:
 `;
   }
 
+  const leadState = buildLeadState(agent.required_info, options?.leadData);
+
   return `Eres un agente de ventas por WhatsApp para ${agent.business_name}.
 
 === INFORMACIÓN DEL NEGOCIO ===
@@ -133,7 +171,7 @@ ${faqs}
 - Emojis: ${useEmojis}
 
 ${customInstructions ? `=== INSTRUCCIONES PERSONALIZADAS ===\n${customInstructions}\n` : ''}
-${toolInstructions}
+${toolInstructions}${leadState}
 === REGLAS GENERALES ===
 ${internalInstructions}
 
