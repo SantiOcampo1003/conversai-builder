@@ -9,15 +9,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2, MessageSquare, ArrowLeft } from "lucide-react";
+import { Send, Phone, Video, MoreVertical, RefreshCw, Copy, Check, CheckCheck, Loader2, MessageSquare, ArrowLeft, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 
+/** Archivo que el agente decidió enviar (mismo formato que devuelve el backend). */
+interface OutboundFile {
+  assetKey: string;
+  type: "image" | "document";
+  url: string;
+  fileName: string | null;
+  caption: string | null;
+}
+
 interface Message {
   id: string;
   text: string;
+  files?: OutboundFile[];
   sender: "user" | "agent";
   timestamp: Date;
   status?: "sent" | "delivered" | "read";
@@ -63,7 +73,7 @@ export const WhatsAppSimulator = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // ⭐ GENERAR userId CONSISTENTE para toda la sesión
-  const [sessionUserId] = useState(() => `web_user_${Date.now()}`);
+  const [sessionUserId, setSessionUserId] = useState(() => `web_user_${Date.now()}`);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -139,21 +149,30 @@ export const WhatsAppSimulator = ({
           content: msg.text
         }));
 
-      const webhookUrl = import.meta.env.VITE_N8N_CHAT_WEBHOOK as string;
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId,
-          userId: sessionUserId,  // ⭐ USAR userId consistente
-          messageText: inputMessage,
-          conversationHistory,
-          sessionId: `session_${agentId}`,
-          timestamp: new Date().toISOString()
-        }),
-      });
+      // Si hay backend configurado se usa el mismo motor que WhatsApp (con herramientas: archivos, datos del cliente).
+      // Si no, se mantiene el workflow de n8n.
+      const backendUrl = (import.meta.env.VITE_BACKEND_CHAT_URL as string | undefined)?.replace(/\/$/, "");
+      const response = backendUrl
+        ? await fetch(`${backendUrl}/api/chat/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // El backend rechaza campos extra
+            body: JSON.stringify({ agentId, userId: sessionUserId, messageText: inputMessage }),
+          })
+        : await fetch(import.meta.env.VITE_N8N_CHAT_WEBHOOK as string, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agentId,
+              userId: sessionUserId,  // ⭐ USAR userId consistente
+              messageText: inputMessage,
+              conversationHistory,
+              sessionId: `session_${agentId}`,
+              timestamp: new Date().toISOString()
+            }),
+          });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
       console.log('Respuesta del webhook:', data);
@@ -167,6 +186,7 @@ export const WhatsAppSimulator = ({
         const agentMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: data.response || data.output || data.message || data.text || "Lo siento, no pude procesar tu mensaje. Intenta de nuevo.",
+          files: Array.isArray(data.files) ? data.files : undefined,
           sender: "agent",
           timestamp: new Date(),
           status: "read"
@@ -198,6 +218,8 @@ export const WhatsAppSimulator = ({
   };
 
   const resetConversation = () => {
+    // Usuario nuevo: el agente no recuerda el historial ni los archivos ya enviados
+    setSessionUserId(`web_user_${Date.now()}`);
     setMessages([
       {
         id: "1",
@@ -466,6 +488,26 @@ export const WhatsAppSimulator = ({
                 <p className="text-[15px] font-normal whitespace-pre-wrap break-words leading-relaxed text-gray-900">
                   {renderMessageWithLinks(message.text)}
                 </p>
+                {message.files?.map((f) => (
+                  <div key={f.assetKey} className="mt-2">
+                    {f.type === "image" ? (
+                      <a href={f.url} target="_blank" rel="noopener noreferrer">
+                        <img src={f.url} alt={f.caption || f.fileName || "Imagen"} className="rounded-lg max-h-56 w-full object-cover" />
+                      </a>
+                    ) : (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-lg bg-black/5 hover:bg-black/10 p-3"
+                      >
+                        <FileText className="h-8 w-8 text-red-500 shrink-0" />
+                        <span className="text-sm text-gray-800 break-all">{f.fileName || "documento.pdf"}</span>
+                      </a>
+                    )}
+                    {f.caption && <p className="text-[13px] text-gray-700 mt-1">{f.caption}</p>}
+                  </div>
+                ))}
                 <div className="flex items-center justify-end gap-1 mt-1">
                   <span className="text-[10px] text-gray-500">
                     {message.timestamp.toLocaleTimeString('es-ES', { 
