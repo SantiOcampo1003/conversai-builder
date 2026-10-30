@@ -67,3 +67,26 @@ export interface TokenBalance {
 export interface AgentWithTokens extends Agent {
   token_balance: TokenBalance | null;
 }
+
+/** Archivo (imagen o PDF) que un agente puede enviar por WhatsApp. Tabla `agent_assets`. */
+export interface AgentAsset {
+  asset_key: string;
+  kind: 'image' | 'document';
+  title: string;
+  caption: string | null;
+  send_when: string;
+  product_ref: string | null;
+  public_url: string;
+  file_name: string | null;
+  mime_type: string | null;
+}
+
+/** Archivo que el canal (WhatsApp) debe enviar después del texto de la respuesta. */
+export interface OutboundFile {
+  assetKey: string;
+  type: 'image' | 'document';
+  url: string;
+  fileName: string | null;
+  mimetype: string | null;
+  caption: string | null;
+}
