@@ -7,7 +7,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
-  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings,
+  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings, Paperclip,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +29,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
+import { AgentAssetsSection } from '@/components/dashboard/AgentAssetsSection'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Agent {
@@ -67,11 +68,12 @@ interface MetaAdsConfig {
   }[]
 }
 
-type SectionId = 'business' | 'products' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
+type SectionId = 'business' | 'products' | 'assets' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'business',     label: 'Negocio',          icon: Store,         description: 'Nombre, tipo y categoría' },
   { id: 'products',     label: 'Productos',         icon: DollarSign,    description: 'Catálogo de productos' },
+  { id: 'assets',       label: 'Archivos',          icon: Paperclip,     description: 'Fotos y PDFs que envía' },
   { id: 'payments',     label: 'Pagos y entrega',   icon: Truck,         description: 'Métodos y envíos' },
   { id: 'faqs',         label: 'FAQs',              icon: MessageCircle, description: 'Preguntas frecuentes' },
   { id: 'personality',  label: 'Personalidad',      icon: Sparkles,      description: 'Tono y estilo' },
@@ -271,6 +273,13 @@ export default function AgentEditor() {
 
             {activeSection === 'business'    && <BusinessSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'products'    && <ProductsSection    agent={agent} onSave={save} saving={saving} />}
+            {activeSection === 'assets'      && clientId && (
+              <AgentAssetsSection
+                agentId={agent.agent_id}
+                clientId={clientId}
+                productNames={(agent.products ?? []).map(p => p.name).filter(Boolean)}
+              />
+            )}
             {activeSection === 'payments'    && <PaymentsSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'personality' && <PersonalitySection agent={agent} onSave={save} saving={saving} />}
