@@ -95,9 +95,9 @@ Tienes acceso a una herramienta para guardar información del cliente.
       ? `\nYa enviados a este cliente (NO los repitas): ${options.sentAssetKeys.join(', ')}`
       : '';
     toolInstructions += `\n=== ARCHIVOS DISPONIBLES ===
-Tienes la herramienta send_file para enviar estos archivos al cliente:
+Tienes la herramienta send_file para enviar estos archivos al cliente. Usa SIEMPRE la clave exacta de la lista (el texto antes de los dos puntos):
 ${list}${sent}
-⚠️ Úsala SOLO cuando se cumpla la condición "Enviar cuando" (máximo ${MAX_FILES_PER_REPLY} archivos por respuesta). El archivo llega junto con tu respuesta: no pegues enlaces ni digas que "adjuntas" algo que no enviaste con la herramienta. Escribe además un mensaje breve que lo acompañe.
+⚠️ Cuando la condición "Enviar cuando" de un archivo se cumpla y no esté en "Ya enviados", DEBES llamar a send_file en esa misma respuesta. Úsala SOLO cuando se cumpla la condición "Enviar cuando" (máximo ${MAX_FILES_PER_REPLY} archivos por respuesta). El archivo llega junto con tu respuesta: no pegues enlaces ni digas que "adjuntas" algo que no enviaste con la herramienta. Escribe además un mensaje breve que lo acompañe.
 `;
   }
 

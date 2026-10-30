@@ -50,8 +50,6 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
 
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState('')
-  const [assetKey, setAssetKey] = useState('')
-  const [keyTouched, setKeyTouched] = useState(false)
   const [sendWhen, setSendWhen] = useState('')
   const [caption, setCaption] = useState('')
 
@@ -72,7 +70,7 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
   useEffect(() => { load() }, [load])
 
   const resetForm = () => {
-    setFile(null); setTitle(''); setAssetKey(''); setKeyTouched(false)
+    setFile(null); setTitle('')
     setSendWhen(''); setCaption('')
     if (fileInput.current) fileInput.current.value = ''
   }
@@ -88,15 +86,19 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
     if (!title) {
       const suggested = picked.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ')
       setTitle(suggested)
-      if (!keyTouched) setAssetKey(toKey(suggested))
     }
   }
 
-  const canSave = !!file && title.trim() !== '' && assetKey !== '' && sendWhen.trim() !== '' && !saving
+  const canSave = !!file && title.trim() !== '' && sendWhen.trim() !== '' && !saving
 
   const handleSave = async () => {
     if (!file || !canSave) return
     setSaving(true)
+    // La clave interna se genera sola a partir del nombre; si ya existe, se le agrega un sufijo
+    const base = toKey(title) || 'archivo'
+    const taken = new Set(assets.map(a => a.asset_key))
+    let assetKey = base
+    for (let n = 2; taken.has(assetKey); n++) assetKey = `${base}_${n}`
     try {
       await uploadAgentAsset({
         agentId,
@@ -116,7 +118,7 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
       const e = err as { code?: string; message?: string }
       toast({
         title: 'No se pudo guardar',
-        description: e.code === '23505' ? `Ya existe un archivo con la clave "${assetKey}". Cámbiala.` : (e.message ?? 'Error desconocido'),
+        description: e.code === '23505' ? 'Ya existe un archivo con ese nombre. Cambia el nombre.' : (e.message ?? 'Error desconocido'),
         variant: 'destructive',
       })
     } finally {
@@ -235,26 +237,14 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
             </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="asset-title">Nombre</Label>
-              <Input
-                id="asset-title"
-                value={title}
-                onChange={e => { setTitle(e.target.value); if (!keyTouched) setAssetKey(toKey(e.target.value)) }}
-                placeholder="Brochure de servicios"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="asset-key">Clave interna</Label>
-              <Input
-                id="asset-key"
-                value={assetKey}
-                onChange={e => { setKeyTouched(true); setAssetKey(toKey(e.target.value)) }}
-                placeholder="brochure_servicios"
-                className="font-mono"
-              />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="asset-title">Nombre del archivo</Label>
+            <Input
+              id="asset-title"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Brochure de servicios"
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
