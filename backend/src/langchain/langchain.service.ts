@@ -48,10 +48,13 @@ export class LangchainService {
     const outbox: OutboundFile[] = [];
 
     // 2. Construir businessInfo (con info de Meta Ads y archivos si están habilitados)
+    const leadData = await this.getLeadData(agent.agent_id, userId);
+
     const businessInfo = buildBusinessInfo(agent, {
       hasMetaAds: metaConfig?.is_enabled || false,
       assets,
       sentAssetKeys: [...sentKeys],
+      leadData,
     });
     console.log(`businessInfo: ${businessInfo}`);
 
@@ -223,6 +226,31 @@ export class LangchainService {
       tokensUsed: tokenCounter.totalTokens,
       files: outbox,
     };
+  }
+
+  /**
+   * Datos del cliente ya guardados por save_customer_info (leads.additional_fields).
+   * Si falla, devuelve null: el agente sigue funcionando sin ese estado.
+   * @private
+   */
+  private async getLeadData(agentId: string, userId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const { data, error } = await this.databaseService
+        .getAdminClient()
+        .from('leads')
+        .select('additional_fields')
+        .eq('agent_id', agentId)
+        .eq('customer_id', userId)
+        .maybeSingle();
+      if (error) {
+        console.error('❌ Error cargando datos del lead:', error.message);
+        return null;
+      }
+      return (data?.additional_fields as Record<string, unknown>) ?? null;
+    } catch (err) {
+      console.error('❌ Error inesperado cargando datos del lead:', err);
+      return null;
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 import { createSendFileTool } from './agent-assets.tool';
-import { buildBusinessInfo, DEFAULT_PRODUCT_PHOTO_WHEN, MAX_FILES_PER_REPLY } from './prompt.builder';
+import { buildBusinessInfo, buildLeadState, DEFAULT_PRODUCT_PHOTO_WHEN, MAX_FILES_PER_REPLY } from './prompt.builder';
 import { Agent, AgentAsset, OutboundFile } from '../common/types/agent.types';
 
 const asset = (over: Partial<AgentAsset> = {}): AgentAsset => ({
@@ -133,5 +133,42 @@ describe('buildBusinessInfo con archivos', () => {
   it('sin archivos no agrega la sección', () => {
     expect(buildBusinessInfo(agent, { assets: [] })).not.toContain('ARCHIVOS DISPONIBLES');
     expect(buildBusinessInfo(agent)).not.toContain('ARCHIVOS DISPONIBLES');
+  });
+});
+
+describe('buildLeadState', () => {
+  const required = ['nombre_talento', 'ingles', 'ciudad'];
+
+  it('lista lo guardado y lo pendiente', () => {
+    const txt = buildLeadState(required, { nombre_talento: 'Santiago Ocampo', ingles: '  ' });
+    expect(txt).toContain('- nombre_talento: Santiago Ocampo');
+    expect(txt).toContain('Pendientes: ingles, ciudad');
+    expect(txt).toContain('NO envíes todavía el mensaje de cierre');
+  });
+
+  it('compara los nombres de campo sin importar mayúsculas ni espacios', () => {
+    const txt = buildLeadState(required, { ' Ciudad ': 'Bogotá' });
+    expect(txt).toContain('Pendientes: nombre_talento, ingles');
+  });
+
+  it('sin datos todavía, todos los campos están pendientes', () => {
+    const txt = buildLeadState(required, null);
+    expect(txt).toContain('(ninguno todavía)');
+    expect(txt).toContain('Pendientes: nombre_talento, ingles, ciudad');
+  });
+
+  it('con todo guardado no hay pendientes', () => {
+    expect(buildLeadState(['a'], { a: 'x' })).toContain('Pendientes: ninguno');
+  });
+
+  it('sin required_info no agrega la sección', () => {
+    expect(buildLeadState([], { a: 'x' })).toBe('');
+    expect(buildLeadState(null, { a: 'x' })).toBe('');
+  });
+
+  it('buildBusinessInfo incluye la sección cuando el agente pide datos', () => {
+    const a = { agent_id: 'ag1', business_name: 'N', required_info: ['ciudad'], internal_custom_instructions: '' } as Agent;
+    expect(buildBusinessInfo(a, { leadData: { ciudad: 'Bogotá' } })).toContain('=== ESTADO DE ESTE CLIENTE');
+    expect(buildBusinessInfo({ ...a, required_info: [] } as Agent)).not.toContain('ESTADO DE ESTE CLIENTE');
   });
 });
