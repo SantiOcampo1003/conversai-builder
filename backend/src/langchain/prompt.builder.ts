@@ -1,6 +1,9 @@
-import { Agent } from '../common/types/agent.types';
+import { Agent, AgentAsset } from '../common/types/agent.types';
 
-export function buildBusinessInfo(agent: Agent, options?: { hasMetaAds?: boolean }): string {
+export function buildBusinessInfo(
+  agent: Agent,
+  options?: { hasMetaAds?: boolean; assets?: AgentAsset[]; sentAssetKeys?: string[] },
+): string {
   // Formatear productos
   const products = agent.products
     ?.map((p) => {
@@ -59,6 +62,25 @@ Tienes acceso a una herramienta para guardar información del cliente.
 ⚠️ IMPORTANTE: Usa la herramienta SOLO cuando el cliente proporcione información personal EXPLÍCITA (${agent.required_info.join(', ')}).
 ❌ NO uses la herramienta para saludos simples, respuestas cortas ("Sí", "No", "Ok"), preguntas del cliente, o cuando NO haya datos personales nuevos.
 ✅ Usa la herramienta cuando el cliente diga su nombre, email, teléfono, dirección u otra información personal.
+`;
+  }
+
+  // Archivos que el agente puede enviar (imágenes y PDFs)
+  if (options?.assets && options.assets.length > 0) {
+    const list = options.assets
+      .map((a) => {
+        const tipo = a.kind === 'image' ? 'imagen' : 'PDF';
+        const producto = a.product_ref ? ` (foto de ${a.product_ref})` : '';
+        return `- ${a.asset_key} [${tipo}]${producto}: ${a.title}\n  Enviar cuando: ${a.send_when}`;
+      })
+      .join('\n');
+    const sent = options.sentAssetKeys?.length
+      ? `\nYa enviados a este cliente (NO los repitas): ${options.sentAssetKeys.join(', ')}`
+      : '';
+    toolInstructions += `\n=== ARCHIVOS DISPONIBLES ===
+Tienes la herramienta send_file para enviar estos archivos al cliente:
+${list}${sent}
+⚠️ Úsala SOLO cuando se cumpla la condición "Enviar cuando". El archivo llega junto con tu respuesta: no pegues enlaces ni digas que "adjuntas" algo que no enviaste con la herramienta. Escribe además un mensaje breve que lo acompañe.
 `;
   }
 

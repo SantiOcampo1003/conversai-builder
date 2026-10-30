@@ -107,7 +107,7 @@ export class ChatService {
     console.log(`📚 Historial cargado: ${chatHistory.length} mensajes`);
 
     // 4️⃣ Ejecutar agente de LangChain (con tools si está configurado)
-    const { content, tokensUsed } = await this.langchainService.executeAgent(
+    const { content, tokensUsed, files } = await this.langchainService.executeAgent(
       agent,
       chatHistory,
       messageText,
@@ -207,6 +207,7 @@ export class ChatService {
 
     return {
       output: content,
+      ...(files.length > 0 && { files }),
     };
   }
 

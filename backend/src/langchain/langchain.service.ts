@@ -6,10 +6,11 @@ import {
   MessagesPlaceholder,
 } from '@langchain/core/prompts';
 import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
-import { Agent, ChatHistoryEntry } from '../common/types/agent.types';
+import { Agent, AgentAsset, ChatHistoryEntry, OutboundFile } from '../common/types/agent.types';
 import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
+import { createSendFileTool } from './agent-assets.tool';
 import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
 import { DatabaseService } from '../database/database.service';
 import { createAgent } from 'langchain';
@@ -17,6 +18,8 @@ import { createAgent } from 'langchain';
 export interface AgentResponse {
   content: string;
   tokensUsed: number;
+  /** Archivos que el agente decidió enviar; el canal los manda después del texto. */
+  files: OutboundFile[];
 }
 
 @Injectable()
@@ -39,9 +42,15 @@ export class LangchainService {
     const metaConfig = await this.getMetaAdsConfig(agent.agent_id);
     console.log(`🔍 Meta Ads config loaded:`, metaConfig ? `enabled=${metaConfig.is_enabled}` : 'null');
 
-    // 2. Construir businessInfo (con info de Meta Ads si está habilitado)
+    // 1.5. Cargar archivos enviables del agente (imágenes / PDFs)
+    const { assets, sentKeys } = await this.getAgentAssets(agent.agent_id, userId);
+    const outbox: OutboundFile[] = [];
+
+    // 2. Construir businessInfo (con info de Meta Ads y archivos si están habilitados)
     const businessInfo = buildBusinessInfo(agent, {
-      hasMetaAds: metaConfig?.is_enabled || false
+      hasMetaAds: metaConfig?.is_enabled || false,
+      assets,
+      sentAssetKeys: [...sentKeys],
     });
     console.log(`businessInfo: ${businessInfo}`);
 
@@ -106,6 +115,14 @@ export class LangchainService {
       }
     }
 
+    // 6.3. Send File Tool (solo si el agente tiene archivos activos)
+    if (assets.length > 0) {
+      console.log(`📎 Tool habilitada: send_file (${assets.length} archivos)`);
+      tools.push(
+        createSendFileTool(this.databaseService, agent.agent_id, userId, assets, sentKeys, outbox),
+      );
+    }
+
     // 6. Si hay tools, usar AgentExecutor
     if (tools.length > 0) {
       // Configurar modelo con parallel_tool_calls solo cuando hay tools
@@ -168,6 +185,7 @@ export class LangchainService {
       return {
         content: responseText,
         tokensUsed: tokenCounter.totalTokens,
+        files: outbox,
       };
     }
 
@@ -202,7 +220,48 @@ export class LangchainService {
     return {
       content: responseText,
       tokensUsed: tokenCounter.totalTokens,
+      files: outbox,
     };
+  }
+
+  /**
+   * Carga los archivos activos del agente y los que ya se le enviaron a este usuario.
+   * Si las tablas no existen o fallan, devuelve vacío: el agente sigue funcionando sin archivos.
+   * @private
+   */
+  private async getAgentAssets(
+    agentId: string,
+    userId: string,
+  ): Promise<{ assets: AgentAsset[]; sentKeys: Set<string> }> {
+    try {
+      const supabase = this.databaseService.getAdminClient();
+
+      const { data: assets, error } = await supabase
+        .from('agent_assets')
+        .select('asset_key, kind, title, caption, send_when, product_ref, public_url, file_name, mime_type')
+        .eq('agent_id', agentId)
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+
+      if (error || !assets || assets.length === 0) {
+        if (error) console.error('❌ Error cargando agent_assets:', error.message);
+        return { assets: [], sentKeys: new Set() };
+      }
+
+      const { data: sent } = await supabase
+        .from('agent_asset_sends')
+        .select('asset_key')
+        .eq('agent_id', agentId)
+        .eq('user_id', userId);
+
+      return {
+        assets: assets as AgentAsset[],
+        sentKeys: new Set((sent || []).map((r: { asset_key: string }) => r.asset_key)),
+      };
+    } catch (err) {
+      console.error('❌ Error inesperado cargando archivos del agente:', err);
+      return { assets: [], sentKeys: new Set() };
+    }
   }
 
   /**
