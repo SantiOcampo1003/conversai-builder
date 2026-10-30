@@ -37,8 +37,11 @@ export function createCustomerInfoTool(
       if (mapping) {
         schemaFields[mapping.key] = mapping.type.optional();
       } else {
-        // Generic string field for custom fields
-        schemaFields[normalizedField] = z.string().optional();
+        // Campo personalizado: se describe a partir de su nombre para que el modelo sepa qué va en él
+        schemaFields[normalizedField] = z
+          .string()
+          .describe(`${normalizedField.replace(/_/g, ' ')} (texto tal como lo dijo el cliente)`)
+          .optional();
       }
     });
   } else {
@@ -58,6 +61,8 @@ export function createCustomerInfoTool(
     name: 'save_customer_info',
     description: `Guarda o actualiza información del cliente cuando la detectes en la conversación.
 Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
+
+⚠️ Guarda SOLO lo que el cliente dijo en esta conversación, con sus palabras y completo (nombres con todos los apellidos). NUNCA inventes, completes ni adivines un dato: si no lo dijo, no lo incluyas.
 
 ⚠️ USA ESTA HERRAMIENTA SOLO CUANDO:
 1. El cliente EXPLÍCITAMENTE proporcione información personal nueva (nombre, email, teléfono, dirección, etc.)
