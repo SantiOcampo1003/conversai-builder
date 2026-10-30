@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
@@ -30,6 +30,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { AgentAssetsSection } from '@/components/dashboard/AgentAssetsSection'
+import { ProductPhotos } from '@/components/dashboard/ProductPhotos'
+import { AgentAssetRow, listAgentAssets, pruneProductAssets } from '@/lib/agent-assets'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Agent {
@@ -39,7 +41,7 @@ interface Agent {
   business_type: string | null
   business_category: string | null
   price_range: { from: string; to: string; currency: string } | null
-  products: { name: string; price: string }[] | null
+  products: ProductItem[] | null
   delivery: { offers: boolean; cost: string; time: string } | null
   payment_methods: string[] | null
   payment_gateway: string | null
@@ -52,6 +54,14 @@ interface Agent {
   custom_instructions: { instruction: string; active: boolean }[] | null
   internal_custom_instructions: string | null
   email: string | null
+}
+
+interface ProductItem {
+  id?: string
+  name: string
+  price: string
+  description?: string
+  image_url?: string
 }
 
 interface MetaAdsConfig {
@@ -150,8 +160,8 @@ export default function AgentEditor() {
   }, [user, agentId, clientId, loadingClientId, resetEditorStore])
 
   // ── Save helper ───────────────────────────────────────────────────────────────
-  const save = async (patch: Partial<Agent>) => {
-    if (!agent) return
+  const save = async (patch: Partial<Agent>): Promise<boolean> => {
+    if (!agent) return false
     setSaving(true)
     setToastError(null)
     const { error } = await supabase
@@ -167,6 +177,7 @@ export default function AgentEditor() {
       markAsSaved() // Limpiar flag de cambios
     }
     setTimeout(() => setToastVisible(false), 3000)
+    return !error
   }
 
   // ── Detectar cambios sin guardar ──────────────────────────────────────────────
@@ -272,13 +283,9 @@ export default function AgentEditor() {
             </div>
 
             {activeSection === 'business'    && <BusinessSection    agent={agent} onSave={save} saving={saving} />}
-            {activeSection === 'products'    && <ProductsSection    agent={agent} onSave={save} saving={saving} />}
+            {activeSection === 'products'    && clientId && <ProductsSection agent={agent} clientId={clientId} onSave={save} saving={saving} />}
             {activeSection === 'assets'      && clientId && (
-              <AgentAssetsSection
-                agentId={agent.agent_id}
-                clientId={clientId}
-                productNames={(agent.products ?? []).map(p => p.name).filter(Boolean)}
-              />
+              <AgentAssetsSection agentId={agent.agent_id} clientId={clientId} />
             )}
             {activeSection === 'payments'    && <PaymentsSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
@@ -413,64 +420,129 @@ function BusinessSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
 }
 
 // ── Section: Productos ────────────────────────────────────────────────────────
-function ProductsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean }) {
-  const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
-  const [items, setItems] = useState<{ name: string; price: string }[]>(
-    Array.isArray(agent.products) ? agent.products : []
-  )
+/** Garantiza un id único y estable por producto (las fotos se ligan por id, no por nombre). */
+function normalizeProducts(products: ProductItem[] | null): (ProductItem & { id: string })[] {
+  const seen = new Set<string>()
+  return (Array.isArray(products) ? products : []).map(p => {
+    const id = p.id && !seen.has(p.id) ? p.id : crypto.randomUUID()
+    seen.add(id)
+    return { ...p, id }
+  })
+}
 
-  const add = () => setItems(prev => [...prev, { name: '', price: '' }])
+function ProductsSection({ agent, clientId, onSave, saving }: {
+  agent: Agent
+  clientId: string
+  onSave: (p: Partial<Agent>) => Promise<boolean> | void
+  saving: boolean
+}) {
+  const [items, setItems] = useState(() => normalizeProducts(agent.products))
+  const [photos, setPhotos] = useState<AgentAssetRow[]>([])
+  const [photosError, setPhotosError] = useState<string | null>(null)
+
+  const loadPhotos = useCallback(async () => {
+    try {
+      const rows = await listAgentAssets(agent.agent_id)
+      setPhotos(rows.filter(r => r.product_id))
+      setPhotosError(null)
+    } catch (err) {
+      setPhotos([])
+      setPhotosError((err as { message?: string }).message ?? 'Error desconocido')
+    }
+  }, [agent.agent_id])
+
+  useEffect(() => { loadPhotos() }, [loadPhotos])
+
+  const add = () => setItems(prev => [...prev, { id: crypto.randomUUID(), name: '', price: '' }])
   const remove = (i: number) => setItems(prev => prev.filter((_, idx) => idx !== i))
   const update = (i: number, field: 'name' | 'price', val: string) =>
     setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: val } : item))
 
+  const persistedIds = new Set((agent.products ?? []).map(p => p.id))
+
+  // Antes de ligar una foto, el producto (con su id) debe existir en el agente
+  const ensureSaved = async (): Promise<boolean> => {
+    if (items.every(i => persistedIds.has(i.id))) return true
+    return (await onSave({ products: items })) !== false
+  }
+
+  const handleSave = async () => {
+    const ok = (await onSave({ products: items })) !== false
+    if (!ok) return
+    try {
+      await pruneProductAssets(agent.agent_id, items.map(i => i.id)) // fotos de productos eliminados
+    } catch (err) {
+      console.error('No se pudieron limpiar las fotos de productos eliminados:', err)
+    }
+    await loadPhotos()
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        Agrega las fotos de cada producto: el agente las envía por WhatsApp cuando el cliente quiere ver el producto o muestra interés.
+      </p>
+      {photosError && (
+        <p className="text-xs text-destructive">No se pudieron cargar las fotos: {photosError}</p>
+      )}
+
       {items.length === 0 && (
         <p className="text-sm text-muted-foreground">No hay productos. Agrega el primero.</p>
       )}
 
       {items.map((item, i) => (
-        <div key={i} className="flex gap-3 items-start bg-secondary/30 rounded-xl p-3 border border-border">
-          <div className="flex-1 flex gap-2">
-            <Input
-              value={item.name}
-              onChange={e => update(i, 'name', e.target.value)}
-              placeholder="Nombre del producto"
-              className="flex-1"
-            />
-            <Input
-              value={item.price}
-              onChange={e => update(i, 'price', e.target.value)}
-              placeholder="Precio"
-              className="w-28"
-            />
+        <div key={item.id} className="bg-secondary/30 rounded-xl p-3 border border-border flex flex-col gap-2">
+          <div className="flex gap-3 items-start">
+            <div className="flex-1 flex gap-2">
+              <Input
+                value={item.name}
+                onChange={e => update(i, 'name', e.target.value)}
+                placeholder="Nombre del producto"
+                className="flex-1"
+              />
+              <Input
+                value={item.price}
+                onChange={e => update(i, 'price', e.target.value)}
+                placeholder="Precio"
+                className="w-28"
+              />
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-destructive h-9 w-9 p-0 shrink-0"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Se eliminará "{item.name || 'este producto'}" y sus fotos. Deberás guardar los cambios para que se aplique.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => remove(i)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-destructive h-9 w-9 p-0 shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Se eliminará "{item.name || 'este producto'}" de la lista. Deberás guardar los cambios para que se aplique.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={() => remove(i)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Eliminar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+
+          <ProductPhotos
+            agentId={agent.agent_id}
+            clientId={clientId}
+            productId={item.id}
+            productName={item.name}
+            photos={photos.filter(ph => ph.product_id === item.id)}
+            ensureSaved={ensureSaved}
+            onChanged={loadPhotos}
+          />
         </div>
       ))}
 
@@ -478,7 +550,7 @@ function ProductsSection({ agent, onSave, saving }: { agent: Agent; onSave: (p: 
         <Plus className="h-4 w-4" /> Agregar producto
       </Button>
 
-      <SaveButton saving={saving} onClick={() => onSave({ products: items })} />
+      <SaveButton saving={saving} onClick={handleSave} />
     </div>
   )
 }
