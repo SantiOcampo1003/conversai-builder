@@ -7,7 +7,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
-  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings, Paperclip,
+  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings, Paperclip, ClipboardList, Table2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +32,9 @@ import { cn } from '@/lib/utils'
 import { AgentAssetsSection } from '@/components/dashboard/AgentAssetsSection'
 import { ProductPhotos } from '@/components/dashboard/ProductPhotos'
 import { AgentAssetRow, listAgentAssets, pruneProductAssets } from '@/lib/agent-assets'
+import { DataFieldsSection } from '@/components/dashboard/DataFieldsSection'
+import { GoogleSheetsSection } from '@/components/dashboard/GoogleSheetsSection'
+import type { DataField } from '@/lib/data-fields'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Agent {
@@ -50,6 +53,7 @@ interface Agent {
   objection_handling: { common: string; response: string } | null
   agent_personality: { tone: string; useEmojis: boolean; formalityLevel: string } | null
   required_info: string[] | null
+  data_fields: DataField[] | null
   warranty: string | null
   custom_instructions: { instruction: string; active: boolean }[] | null
   internal_custom_instructions: string | null
@@ -78,12 +82,14 @@ interface MetaAdsConfig {
   }[]
 }
 
-type SectionId = 'business' | 'products' | 'assets' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
+type SectionId = 'business' | 'products' | 'assets' | 'data' | 'sheets' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'business',     label: 'Negocio',          icon: Store,         description: 'Nombre, tipo y categoría' },
   { id: 'products',     label: 'Productos',         icon: DollarSign,    description: 'Catálogo de productos' },
   { id: 'assets',       label: 'Archivos',          icon: Paperclip,     description: 'Fotos y PDFs que envía' },
+  { id: 'data',         label: 'Datos a recoger',   icon: ClipboardList, description: 'Columnas de Excel y Sheets' },
+  { id: 'sheets',       label: 'Google Sheets',     icon: Table2,        description: 'Enviar datos a tu hoja' },
   { id: 'payments',     label: 'Pagos y entrega',   icon: Truck,         description: 'Métodos y envíos' },
   { id: 'faqs',         label: 'FAQs',              icon: MessageCircle, description: 'Preguntas frecuentes' },
   { id: 'personality',  label: 'Personalidad',      icon: Sparkles,      description: 'Tono y estilo' },
@@ -105,7 +111,6 @@ const BUSINESS_CATEGORIES = [
 ]
 
 const PAYMENT_METHOD_OPTIONS = ['efectivo', 'transferencia', 'tarjeta', 'nequi', 'daviplata', 'pse', 'paypal', 'otro']
-const REQUIRED_INFO_OPTIONS  = ['nombre', 'telefono', 'email', 'direccion', 'ciudad']
 
 // ── Save toast ─────────────────────────────────────────────────────────────────
 function SaveToast({ show, error }: { show: boolean; error: string | null }) {
@@ -287,6 +292,8 @@ export default function AgentEditor() {
             {activeSection === 'assets'      && clientId && (
               <AgentAssetsSection agentId={agent.agent_id} clientId={clientId} />
             )}
+            {activeSection === 'data'        && <DataFieldsSection agent={agent} saving={saving} onSave={save} />}
+            {activeSection === 'sheets'      && <GoogleSheetsSection agentId={agent.agent_id} />}
             {activeSection === 'payments'    && <PaymentsSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'personality' && <PersonalitySection agent={agent} onSave={save} saving={saving} />}
@@ -840,15 +847,11 @@ function PersonalitySection({ agent, onSave, saving }: { agent: Agent; onSave: (
 // ── Section: Avanzado ─────────────────────────────────────────────────────────
 function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent; onSave: (p: Partial<Agent>) => void; saving: boolean; isSuperAdmin: boolean }) {
   const markAsUnsaved = useEditorStore(state => state.markAsUnsaved)
-  const [reqInfo, setReqInfo]     = useState<string[]>(Array.isArray(agent.required_info) ? agent.required_info : [])
   const [warranty, setWarranty]   = useState(agent.warranty || '')
   const [instructions, setInstr]  = useState<{ instruction: string; active: boolean }[]>(
     Array.isArray(agent.custom_instructions) ? agent.custom_instructions : []
   )
   const [internalInstructions, setInternalInstr] = useState(agent.internal_custom_instructions || '')
-
-  const toggleInfo = (v: string) =>
-    setReqInfo(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
 
   const addInstr    = () => setInstr(prev => [...prev, { instruction: '', active: true }])
   const removeInstr = (i: number) => setInstr(prev => prev.filter((_, idx) => idx !== i))
@@ -859,28 +862,6 @@ function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-2">
-        <Label>Información requerida al cliente</Label>
-        <p className="text-xs text-muted-foreground">El agente solicitará estos datos durante la conversación</p>
-        <div className="flex flex-wrap gap-2">
-          {REQUIRED_INFO_OPTIONS.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => toggleInfo(opt)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-sm border transition-all capitalize',
-                reqInfo.includes(opt)
-                  ? 'bg-primary/15 text-primary border-primary/40'
-                  : 'bg-secondary/50 text-muted-foreground border-border hover:border-primary/30'
-              )}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="flex flex-col gap-1.5">
         <Label>Política de garantía</Label>
         <Textarea
@@ -975,7 +956,6 @@ function AdvancedSection({ agent, onSave, saving, isSuperAdmin }: { agent: Agent
       <SaveButton
         saving={saving}
         onClick={() => onSave({
-          required_info: reqInfo,
           warranty,
           custom_instructions: instructions,
           ...(isSuperAdmin ? { internal_custom_instructions: internalInstructions } : {}),
