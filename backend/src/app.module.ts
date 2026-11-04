@@ -6,6 +6,7 @@ import { ChatModule } from './chat/chat.module';
 import { DatabaseModule } from './database/database.module';
 import { LangchainModule } from './langchain/langchain.module';
 import { EmailModule } from './email/email.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { EmailModule } from './email/email.module';
     LangchainModule,
     ChatModule,
     EmailModule,
+    IntegrationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

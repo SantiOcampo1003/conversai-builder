@@ -12,6 +12,8 @@ export function createCustomerInfoTool(
   agentId: string,
   customerId: string, // WhatsApp phone number
   dataFields: DataField[] = [],
+  /** Se llama después de guardar datos de la persona (ej. para sincronizar con Google Sheets). No debe lanzar. */
+  onSaved?: () => void,
 ) {
   const requiredInfo = dataFields.map((f) => f.key);
   // Build dynamic schema based on required_info
@@ -132,6 +134,7 @@ Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
             return `Error al actualizar información: ${updateError.message}`;
           }
 
+          onSaved?.();
           return `Información del cliente actualizada correctamente. Campos guardados: ${Object.keys(input).join(', ')}`;
         } else {
           // Create new lead
@@ -150,6 +153,7 @@ Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
             return `Error al crear registro: ${insertError.message}`;
           }
 
+          onSaved?.();
           return `Nueva información del cliente guardada correctamente. Campos: ${Object.keys(input).join(', ')}`;
         }
       } catch (error) {

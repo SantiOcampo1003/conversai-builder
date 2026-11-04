@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import {
@@ -11,6 +11,7 @@ import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { resolveDataFields } from './data-fields';
+import { GoogleSheetsService } from '../integrations/google-sheets.service';
 import { createSendFileTool } from './agent-assets.tool';
 import { resolveModelName, resolveTemperature } from './model.config';
 import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
@@ -29,6 +30,7 @@ export class LangchainService {
   constructor(
     private configService: ConfigService,
     private databaseService: DatabaseService,
+    @Optional() private googleSheets?: GoogleSheetsService,
   ) {}
 
   async executeAgent(
@@ -94,6 +96,9 @@ export class LangchainService {
         agent.agent_id,
         userId,
         dataFields,
+        () => {
+          void this.googleSheets?.syncLead(agent.agent_id, userId);
+        },
       );
 
       tools.push(customerInfoTool);
