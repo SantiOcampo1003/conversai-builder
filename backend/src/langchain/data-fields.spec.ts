@@ -71,3 +71,16 @@ describe('prompt con data_fields', () => {
     expect(buildDataFieldsPrompt([])).toBe('');
   });
 });
+
+describe('guardado de respuestas cortas', () => {
+  const agent: any = {
+    agent_id: 'a', business_name: 'X', business_type: 't', business_category: 'c',
+    required_info: ['ciudad'], data_fields: null,
+  };
+
+  it('el prompt ya no prohíbe guardar respuestas cortas y explica cuándo sí', () => {
+    const txt = buildBusinessInfo(agent, {});
+    expect(txt).not.toContain('respuestas cortas ("Sí", "No", "Ok")');
+    expect(txt).toContain('Las respuestas cortas SÍ se guardan');
+  });
+});
