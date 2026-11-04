@@ -51,3 +51,35 @@ describe('argumentos filtrados sin nombre de herramienta', () => {
     expect(hasLeakedToolText('Hola, nota: algo importante {entre llaves}')).toBe(false);
   });
 });
+
+describe('restos y formatos adicionales', () => {
+  const body = 'CLAN Atelier está en Bogotá, en la Calle 195 #53-15. ¿Tienes alguna duda?';
+  const ok = (raw: string) => expect(stripLeakedToolText(raw)).toBe(body);
+
+  it('resto de argumentos en la primera línea (caso real: Atelier"})', () => {
+    ok(`Atelier"}\n${body}`);
+    ok(`"}\n${body}`);
+    ok(`})\n${body}`);
+  });
+  it('JSON en varias líneas y con nombre de herramienta', () => {
+    ok(`functions.save_customer_info {\n"programa_de_interes": "CLAN Atelier"\n}\n${body}`);
+  });
+  it('bloque de código ```json', () => {
+    ok('```json\n{"programa_de_interes": "CLAN Atelier"}\n```\n' + body);
+  });
+  it('tool_uses anidado', () => {
+    ok(`{"tool_uses":[{"recipient_name":"functions.save_customer_info","parameters":{"programa_de_interes":"CLAN Atelier"}}]}\n${body}`);
+  });
+  it('sin llave inicial', () => {
+    ok(`programa_de_interes": "CLAN Atelier"}\n${body}`);
+  });
+  it('no toca mensajes normales con corchetes, paréntesis o llaves', () => {
+    const t = 'Te llama [Laura] (líder de admisiones).\nSi tienes dudas, escríbeme {sin problema}.';
+    expect(stripLeakedToolText(t)).toBe(t);
+    expect(hasLeakedToolText(t)).toBe(false);
+  });
+  it('hasLeakedToolText detecta los formatos nuevos', () => {
+    expect(hasLeakedToolText(`Atelier"}\n${body}`)).toBe(true);
+    expect(hasLeakedToolText(body)).toBe(false);
+  });
+});
