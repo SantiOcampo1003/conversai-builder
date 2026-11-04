@@ -84,3 +84,26 @@ describe('guardado de respuestas cortas', () => {
     expect(txt).toContain('Las respuestas cortas SÍ se guardan');
   });
 });
+
+describe('teléfono del contacto en el prompt', () => {
+  const agent: any = {
+    agent_id: 'a', business_name: 'X', business_type: 't', business_category: 'c',
+    required_info: ['ciudad'], data_fields: null,
+  };
+
+  it('si el identificador es un teléfono real, el agente no lo pide', () => {
+    const txt = buildBusinessInfo(agent, { contactId: '573059357319' });
+    expect(txt).toContain('Número de WhatsApp de esta persona: +573059357319');
+    expect(txt).toContain('NO se lo pidas');
+  });
+
+  it('si es @lid, avisa que no hay teléfono y que se pida si hace falta', () => {
+    const txt = buildBusinessInfo(agent, { contactId: '158621866397825@lid' });
+    expect(txt).toContain('NO está disponible');
+    expect(txt).not.toContain('+158621866397825');
+  });
+
+  it('sin contactId no agrega nada', () => {
+    expect(buildBusinessInfo(agent, {})).not.toContain('Número de WhatsApp de esta persona');
+  });
+});

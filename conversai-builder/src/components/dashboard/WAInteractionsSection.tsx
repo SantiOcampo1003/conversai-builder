@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
+import { downloadConversationsExcel, readDataFields } from '@/lib/data-fields'
 import { supabase } from '@/lib/supabase'
-import { MessageSquare, Loader2, Bot, User, Search, RefreshCw, UserCircle, Target } from 'lucide-react'
+import { MessageSquare, Loader2, Bot, User, Search, RefreshCw, UserCircle, Target, Download } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -54,9 +56,31 @@ const PAGE_SIZE = 50
 export function WAInteractionsSection() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
+  const { toast } = useToast()
+  const [exporting, setExporting] = useState(false)
 
   const [agents, setAgents] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState<string>('all')
+
+  /** Excel de seguimiento de TODAS las conversaciones del agente elegido (con su etapa). */
+  const exportTracking = async () => {
+    if (selectedAgent === 'all') return
+    setExporting(true)
+    try {
+      const { data, error } = await supabase
+        .from('agents')
+        .select('data_fields, required_info')
+        .eq('agent_id', selectedAgent)
+        .maybeSingle()
+      if (error || !data) throw new Error(error?.message ?? 'No se encontró el agente')
+      const n = await downloadConversationsExcel(selectedAgent, readDataFields(data), selectedAgent)
+      toast({ title: `Excel de seguimiento descargado (${n} conversaciones)` })
+    } catch (e) {
+      toast({ title: 'No se pudo descargar', description: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setExporting(false)
+    }
+  }
   const [allConversations, setAllConversations] = useState<Conversation[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
@@ -365,6 +389,18 @@ export function WAInteractionsSection() {
           >
             <RefreshCw className={cn("h-4 w-4", loadingConversations && "animate-spin")} />
             Actualizar
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportTracking}
+            disabled={selectedAgent === 'all' || exporting}
+            title={selectedAgent === 'all' ? 'Elige un agente para descargar su seguimiento' : 'Descargar el seguimiento de todas las conversaciones'}
+            className="gap-2"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Excel de seguimiento
           </Button>
 
           <div className="w-56">

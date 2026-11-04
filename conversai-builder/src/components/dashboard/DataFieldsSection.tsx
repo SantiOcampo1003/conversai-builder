@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import {
   DataField,
   cleanDataFields,
+  downloadConversationsExcel,
   downloadLeadsExcel,
   readDataFields,
   toFieldKey,
@@ -26,7 +27,7 @@ export function DataFieldsSection({ agent, saving, onSave }: Props) {
   const { toast } = useToast()
   const [fields, setFields] = useState<DataField[]>(() => readDataFields(agent))
   const [error, setError] = useState<string | null>(null)
-  const [downloading, setDownloading] = useState(false)
+  const [downloading, setDownloading] = useState<null | 'leads' | 'conv'>(null)
 
   const update = (i: number, patch: Partial<DataField>) =>
     setFields(prev => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
@@ -50,16 +51,19 @@ export function DataFieldsSection({ agent, saving, onSave }: Props) {
     if (ok) setFields(res.fields)
   }
 
-  const download = async () => {
-    setDownloading(true)
+  const download = async (kind: 'leads' | 'conv') => {
+    setDownloading(kind)
     try {
       const res = cleanDataFields(fields)
-      const n = await downloadLeadsExcel(agent.agent_id, res.fields ?? readDataFields(agent), agent.agent_id)
-      toast({ title: n ? `Excel descargado (${n} contactos)` : 'Excel descargado (sin contactos todavía)' })
+      const list = res.fields ?? readDataFields(agent)
+      const n = kind === 'leads'
+        ? await downloadLeadsExcel(agent.agent_id, list, agent.agent_id)
+        : await downloadConversationsExcel(agent.agent_id, list, agent.agent_id)
+      toast({ title: n ? `Excel descargado (${n} ${kind === 'leads' ? 'contactos' : 'conversaciones'})` : 'Excel descargado (vacío por ahora)' })
     } catch (e) {
       toast({ title: 'No se pudo descargar', description: (e as Error).message, variant: 'destructive' })
     } finally {
-      setDownloading(false)
+      setDownloading(null)
     }
   }
 
@@ -135,13 +139,17 @@ export function DataFieldsSection({ agent, saving, onSave }: Props) {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Guardar datos
         </Button>
-        <Button variant="outline" onClick={download} disabled={downloading} className="gap-2">
-          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Descargar Excel
+        <Button variant="outline" onClick={() => download('leads')} disabled={downloading !== null} className="gap-2">
+          {downloading === 'leads' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Excel: listos para closer
+        </Button>
+        <Button variant="outline" onClick={() => download('conv')} disabled={downloading !== null} className="gap-2">
+          {downloading === 'conv' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Excel: seguimiento de conversaciones
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Cambiar el nombre de una columna no pierde datos. Si quitas una columna, sus datos ya guardados aparecen al final del Excel.
+        Cada contacto tiene una etapa: «En conversación» mientras falte algún dato obligatorio y «Listo para closer» cuando ya los tiene todos. El primer Excel trae solo los listos; el segundo trae todas las conversaciones, también las que no dieron datos. Cambiar el nombre de una columna no pierde datos.
       </p>
     </div>
   )

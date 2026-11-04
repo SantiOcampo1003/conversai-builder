@@ -12,6 +12,7 @@ const backendBase = () => (import.meta.env.VITE_BACKEND_CHAT_URL as string | und
 interface Integration {
   id: string
   enabled: boolean
+  only_complete: boolean
   spreadsheet_id: string
   sheet_name: string
   last_sync_at: string | null
@@ -51,6 +52,7 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
   const [link, setLink] = useState('')
   const [sheetName, setSheetName] = useState('Leads')
   const [enabled, setEnabled] = useState(true)
+  const [onlyComplete, setOnlyComplete] = useState(true)
   const [busy, setBusy] = useState<null | 'save' | 'sync'>(null)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -64,7 +66,7 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
       }
       const { data } = await supabase
         .from('agent_integrations')
-        .select('id,enabled,spreadsheet_id,sheet_name,last_sync_at,last_error')
+        .select('id,enabled,only_complete,spreadsheet_id,sheet_name,last_sync_at,last_error')
         .eq('agent_id', agentId)
         .eq('provider', 'google_sheets')
         .maybeSingle()
@@ -73,6 +75,7 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
         setLink(`https://docs.google.com/spreadsheets/d/${data.spreadsheet_id}/edit`)
         setSheetName(data.sheet_name)
         setEnabled(data.enabled)
+        setOnlyComplete(data.only_complete !== false)
       }
     } finally {
       setLoading(false)
@@ -88,7 +91,7 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
     setBusy('save'); setMessage(null)
     try {
       const { error } = await supabase.from('agent_integrations').upsert(
-        { agent_id: agentId, provider: 'google_sheets', spreadsheet_id: id, sheet_name: sheetName.trim(), enabled, updated_at: new Date().toISOString() },
+        { agent_id: agentId, provider: 'google_sheets', spreadsheet_id: id, sheet_name: sheetName.trim(), enabled, only_complete: onlyComplete, updated_at: new Date().toISOString() },
         { onConflict: 'agent_id,provider' },
       )
       if (error) throw new Error(error.message)
@@ -165,6 +168,15 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
         <li className="flex items-center gap-2">
           <Switch id="sheets-enabled" checked={enabled} onCheckedChange={setEnabled} />
           <Label htmlFor="sheets-enabled" className="text-sm">Enviar los datos a esta hoja</Label>
+        </li>
+        <li className="flex items-start gap-2">
+          <Switch id="sheets-only-complete" checked={onlyComplete} onCheckedChange={setOnlyComplete} className="mt-0.5" />
+          <Label htmlFor="sheets-only-complete" className="text-sm leading-snug">
+            Solo contactos con los datos completos (etapa «Listo para closer»)
+            <span className="block text-xs text-muted-foreground">
+              Recomendado para la hoja del closer. Las conversaciones en curso se ven en el Excel de seguimiento.
+            </span>
+          </Label>
         </li>
       </ol>
 

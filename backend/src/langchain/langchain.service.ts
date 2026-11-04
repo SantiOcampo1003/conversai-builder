@@ -59,6 +59,7 @@ export class LangchainService {
       assets,
       sentAssetKeys: [...sentKeys],
       leadData,
+      contactId: userId,
     });
     console.log(`businessInfo: ${businessInfo}`);
 
