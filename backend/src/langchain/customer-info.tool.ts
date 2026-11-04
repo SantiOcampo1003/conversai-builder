@@ -81,7 +81,7 @@ Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
 
 ❌ NO USES ESTA HERRAMIENTA SI:
 - El mensaje es un saludo simple ("Hola", "Qué tal", "Buenas")
-- El mensaje es una respuesta corta ("Sí", "No", "Ok", "Gracias")
+- El mensaje es solo un "Ok" o un agradecimiento ("Gracias") que NO contesta ninguna pregunta de dato
 - El cliente hace una pregunta sin dar información personal
 - El cliente solicita información sobre productos/servicios
 - No hay datos personales nuevos en el mensaje
@@ -91,9 +91,15 @@ Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
 - "Vivo en Medellín, Calle 10 #20-30" → save_customer_info({ciudad: "Medellín", direccion: "Calle 10 #20-30"})
 - "Mi email es juan@test.com y mi teléfono es 300123456" → save_customer_info({email: "juan@test.com", telefono: "300123456"})
 
+✅ LAS RESPUESTAS CORTAS A UNA PREGUNTA DE DATO SÍ SE GUARDAN:
+- Si en tu mensaje anterior pediste un dato y la persona contesta con pocas palabras, guárdalo en el campo de esa pregunta.
+  Ejemplo: preguntaste "¿En qué ciudad viven?" y responde "Zipaquirá" → save_customer_info({ciudad: "Zipaquirá"})
+- Un "sí" o "no" que CONFIRMA un dato también se guarda, con el valor que confirma (ej. "sí" a "¿Te llamamos a este mismo número?" → "mismo número").
+- Si un dato se completa en varios mensajes, guarda el valor completo (ej. "mismo número, tarde"), no solo la última parte.
+
 ❌ Ejemplos INCORRECTOS (NO usar la herramienta):
 - "Hola" → Solo responde el saludo
-- "Sí" / "No" → Continúa la conversación
+- "Ok" (sin que contesten un dato) → Continúa la conversación
 - "¿Cuál es el precio?" → Responde sin llamar la herramienta
 - "Gracias" → Solo responde cortésmente`,
     schema,

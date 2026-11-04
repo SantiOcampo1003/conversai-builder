@@ -120,7 +120,8 @@ export function buildBusinessInfo(
     toolInstructions += `\n=== HERRAMIENTA: GUARDAR INFORMACIÓN DEL CLIENTE ===
 Tienes acceso a una herramienta para guardar información del cliente.
 ⚠️ IMPORTANTE: Usa la herramienta SOLO cuando el cliente proporcione información personal EXPLÍCITA (${dataFields.map((f) => f.key).join(', ')}).
-❌ NO uses la herramienta para saludos simples, respuestas cortas ("Sí", "No", "Ok"), preguntas del cliente, o cuando NO haya datos personales nuevos.
+❌ NO uses la herramienta para saludos simples, agradecimientos, preguntas del cliente, o cuando NO haya datos nuevos.
+✅ Las respuestas cortas SÍ se guardan cuando contestan la pregunta de un dato que acabas de hacer (ej. "b1", "tarde", "sí, este mismo número"): guárdalas en el campo de esa pregunta. Si un dato se completa en varios mensajes, guarda el valor completo.
 ✅ Usa la herramienta cuando el cliente diga su nombre, email, teléfono, dirección u otra información personal.
 `;
     // Agentes con datos definidos en el formato nuevo: se listan con su clave y qué va en cada uno
