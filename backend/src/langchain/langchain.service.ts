@@ -60,7 +60,13 @@ export class LangchainService {
       sentAssetKeys: [...sentKeys],
       leadData,
     });
-    console.log(`businessInfo: ${businessInfo}`);
+    // El prompt completo incluye datos de la persona (nombres, etc.) y pesa ~35 KB por mensaje:
+    // solo se imprime si se activa LOG_SYSTEM_PROMPT=true (útil para depurar).
+    if (this.configService.get<string>('LOG_SYSTEM_PROMPT') === 'true') {
+      console.log(`businessInfo: ${businessInfo}`);
+    } else {
+      console.log(`📝 Prompt armado (${businessInfo.length} caracteres). LOG_SYSTEM_PROMPT=true para verlo completo.`);
+    }
 
     // 3. Convertir historial a formato LangChain
     const messages: BaseMessage[] = chatHistory.map((h) =>
