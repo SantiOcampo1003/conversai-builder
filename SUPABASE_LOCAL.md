@@ -80,6 +80,34 @@ supabase migration new nombre_de_la_migracion
 ```
 Genera un archivo vacío en `supabase/migrations/` con timestamp.
 
+### ⚠️ Regla: todo cambio de esquema en producción pasa por una migración
+
+No ejecutes `CREATE`/`ALTER`/`DROP` ni políticas desde el SQL Editor de producción.
+Si algo se crea a mano, no existe en local, en branches ni en entornos nuevos, y
+las migraciones siguientes que lo toquen fallan fuera de producción.
+
+```bash
+supabase migration new nombre_del_cambio   # escribir el SQL aquí
+supabase db reset                          # probarlo en local
+supabase db push --linked --dry-run        # ver qué se aplicará
+supabase db push --linked                  # aplicarlo
+```
+
+No edites una migración ya aplicada en producción: `db push` no la vuelve a
+ejecutar, así que el cambio nunca llega. Crea una migración nueva.
+
+Para detectar cambios hechos a mano (drift), esto debe salir vacío salvo ruido
+(constraints/políticas idénticas que se borran y recrean, triggers internos de storage):
+```bash
+supabase db diff --linked --schema public,storage
+```
+
+Si se coló un cambio manual: crea una migración idempotente con el SQL que
+devuelve el diff (`IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`,
+`ON CONFLICT DO NOTHING`) y márcala como aplicada en producción sin ejecutarla:
+`supabase migration repair --status applied <version> --linked`.
+Ejemplo: `20261104120000_sync_manual_db_changes.sql`.
+
 ---
 
 ## Exponer Postgres via ngrok (para N8N remoto)
