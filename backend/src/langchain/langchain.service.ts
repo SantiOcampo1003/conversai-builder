@@ -11,7 +11,7 @@ import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { resolveDataFields } from './data-fields';
-import { hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
+import { extractLeakedArgs, hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
 import { GoogleSheetsService } from '../integrations/google-sheets.service';
 import { createSendFileTool } from './agent-assets.tool';
 import { resolveModelName, resolveTemperature } from './model.config';
@@ -86,13 +86,14 @@ export class LangchainService {
     const tools: any[] = [];
 
     // 6.1. Customer Info Tool
+    let customerInfoTool: ReturnType<typeof createCustomerInfoTool> | null = null;
     const dataFields = resolveDataFields(agent);
     if (dataFields.length > 0) {
       console.log(
         `🔧 Tool habilitada: save_customer_info (campos: ${dataFields.map((f) => f.key).join(', ')})`,
       );
 
-      const customerInfoTool = createCustomerInfoTool(
+      customerInfoTool = createCustomerInfoTool(
         this.databaseService,
         agent.agent_id,
         userId,
@@ -168,7 +169,19 @@ export class LangchainService {
       // El resultado viene en result.messages, el último es la respuesta del agente
       const lastMessage = result.messages[result.messages.length - 1];
       const rawText = lastMessage.content as string;
-      if (hasLeakedToolText(rawText)) console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+      if (hasLeakedToolText(rawText)) {
+        console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+        // Además de ocultarlo, se guarda de verdad lo que quiso guardar (solo claves del agente)
+        const leaked = extractLeakedArgs(rawText, dataFields.map((f) => f.key));
+        if (customerInfoTool && Object.keys(leaked).length > 0) {
+          try {
+            await customerInfoTool.invoke(leaked);
+            console.log(`💾 Datos recuperados del texto filtrado: ${Object.keys(leaked).join(', ')}`);
+          } catch (e) {
+            console.error('No se pudieron guardar los datos del texto filtrado:', (e as Error).message);
+          }
+        }
+      }
       const responseText = stripLeakedToolText(rawText);
 
       // Contar cuántas iteraciones y tool calls se hicieron

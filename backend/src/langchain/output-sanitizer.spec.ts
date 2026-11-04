@@ -1,4 +1,4 @@
-import { EMPTY_REPLY_FALLBACK, hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
+import { EMPTY_REPLY_FALLBACK, extractLeakedArgs, hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
 
 describe('stripLeakedToolText', () => {
   it('quita la llamada filtrada y deja la respuesta', () => {
@@ -25,5 +25,29 @@ describe('stripLeakedToolText', () => {
 
   it('si solo había la llamada filtrada, devuelve un mensaje neutro', () => {
     expect(stripLeakedToolText('functions.save_customer_info IALOG_SESSION_ID=abc')).toBe(EMPTY_REPLY_FALLBACK);
+  });
+});
+
+describe('argumentos filtrados sin nombre de herramienta', () => {
+  const raw = '({\nprograma_de_interes: "CLAN Atelier"\n})\nCLAN Atelier está en Bogotá, en la Calle 195 #53-15. ¿Tienes alguna duda?';
+
+  it('quita el bloque ({ ... }) del inicio', () => {
+    expect(hasLeakedToolText(raw)).toBe(true);
+    expect(stripLeakedToolText(raw)).toBe('CLAN Atelier está en Bogotá, en la Calle 195 #53-15. ¿Tienes alguna duda?');
+  });
+
+  it('quita también el bloque JSON con comillas y varios campos', () => {
+    const t = '{"nombre_talento": "Andrés Gómez", "ciudad": "Bogotá"}\n¡Perfecto, gracias!';
+    expect(stripLeakedToolText(t)).toBe('¡Perfecto, gracias!');
+  });
+
+  it('extrae solo las claves permitidas', () => {
+    const t = '({ programa_de_interes: "CLAN Atelier", otra_cosa: "x", ciudad: \'Bogotá\' })\nHola';
+    expect(extractLeakedArgs(t, ['programa_de_interes', 'ciudad'])).toEqual({ programa_de_interes: 'CLAN Atelier', ciudad: 'Bogotá' });
+  });
+
+  it('no extrae nada de un mensaje normal', () => {
+    expect(extractLeakedArgs('Hola, ¿cómo estás? Nota: llámame mañana.', ['ciudad'])).toEqual({});
+    expect(hasLeakedToolText('Hola, nota: algo importante {entre llaves}')).toBe(false);
   });
 });
