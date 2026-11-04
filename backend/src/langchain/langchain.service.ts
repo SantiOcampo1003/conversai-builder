@@ -10,6 +10,7 @@ import { Agent, AgentAsset, ChatHistoryEntry, OutboundFile } from '../common/typ
 import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
+import { resolveDataFields } from './data-fields';
 import { createSendFileTool } from './agent-assets.tool';
 import { resolveModelName, resolveTemperature } from './model.config';
 import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
@@ -82,16 +83,17 @@ export class LangchainService {
     const tools: any[] = [];
 
     // 6.1. Customer Info Tool
-    if (agent.required_info && agent.required_info.length > 0) {
+    const dataFields = resolveDataFields(agent);
+    if (dataFields.length > 0) {
       console.log(
-        `🔧 Tool habilitada: save_customer_info (campos: ${agent.required_info.join(', ')})`,
+        `🔧 Tool habilitada: save_customer_info (campos: ${dataFields.map((f) => f.key).join(', ')})`,
       );
 
       const customerInfoTool = createCustomerInfoTool(
         this.databaseService,
         agent.agent_id,
         userId,
-        agent.required_info,
+        dataFields,
       );
 
       tools.push(customerInfoTool);

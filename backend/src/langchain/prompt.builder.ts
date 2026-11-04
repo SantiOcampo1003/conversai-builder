@@ -1,4 +1,5 @@
-import { Agent, AgentAsset } from '../common/types/agent.types';
+import { Agent, AgentAsset, DataField } from '../common/types/agent.types';
+import { buildDataFieldsPrompt, hasExplicitDataFields, resolveDataFields } from './data-fields';
 
 /** Regla por defecto para fotos de producto sin condición propia. */
 export const DEFAULT_PRODUCT_PHOTO_WHEN =
@@ -14,10 +15,14 @@ const normKey = (k: string) => k.toLowerCase().trim();
  * (con historial largo olvidaba datos y cerraba antes de tiempo).
  */
 export function buildLeadState(
-  requiredInfo: string[] | null | undefined,
+  requiredInfo: Array<string | DataField> | null | undefined,
   leadData?: Record<string, unknown> | null,
 ): string {
   if (!requiredInfo || requiredInfo.length === 0) return '';
+
+  const fields: DataField[] = requiredInfo.map((f) =>
+    typeof f === 'string' ? { key: f, label: f, required: true } : f,
+  );
 
   const saved = new Map<string, string>();
   for (const [k, v] of Object.entries(leadData ?? {})) {
@@ -26,13 +31,15 @@ export function buildLeadState(
   }
 
   const lines = [...saved.entries()].map(([k, v]) => `- ${k}: ${v}`);
-  const pending = requiredInfo.filter((k) => !saved.has(normKey(k)));
+  const missing = fields.filter((f) => !saved.has(normKey(f.key)));
+  const pending = missing.filter((f) => f.required !== false).map((f) => f.key);
+  const optional = missing.filter((f) => f.required === false).map((f) => f.key);
 
   return `\n=== ESTADO DE ESTE CLIENTE (datos ya guardados) ===
 Guardados:
 ${lines.length ? lines.join('\n') : '- (ninguno todavía)'}
 Pendientes: ${pending.length ? pending.join(', ') : 'ninguno'}
-⚠️ Toma los datos guardados como ciertos y NO los vuelvas a preguntar. Si hay datos pendientes y la persona no se ha negado a darlos, pregunta el siguiente pendiente (una pregunta por mensaje) y NO envíes todavía el mensaje de cierre.
+${optional.length ? `Opcionales sin dato (no bloquean el cierre): ${optional.join(', ')}\n` : ''}⚠️ Toma los datos guardados como ciertos y NO los vuelvas a preguntar. Si hay datos pendientes y la persona no se ha negado a darlos, pregunta el siguiente pendiente (una pregunta por mensaje) y NO envíes todavía el mensaje de cierre.
 `;
 }
 
@@ -108,13 +115,16 @@ export function buildBusinessInfo(
   let toolInstructions = '';
 
   // Customer info tool
-  if (agent.required_info && agent.required_info.length > 0) {
+  const dataFields = resolveDataFields(agent);
+  if (dataFields.length > 0) {
     toolInstructions += `\n=== HERRAMIENTA: GUARDAR INFORMACIÓN DEL CLIENTE ===
 Tienes acceso a una herramienta para guardar información del cliente.
-⚠️ IMPORTANTE: Usa la herramienta SOLO cuando el cliente proporcione información personal EXPLÍCITA (${agent.required_info.join(', ')}).
+⚠️ IMPORTANTE: Usa la herramienta SOLO cuando el cliente proporcione información personal EXPLÍCITA (${dataFields.map((f) => f.key).join(', ')}).
 ❌ NO uses la herramienta para saludos simples, respuestas cortas ("Sí", "No", "Ok"), preguntas del cliente, o cuando NO haya datos personales nuevos.
 ✅ Usa la herramienta cuando el cliente diga su nombre, email, teléfono, dirección u otra información personal.
 `;
+    // Agentes con datos definidos en el formato nuevo: se listan con su clave y qué va en cada uno
+    if (hasExplicitDataFields(agent)) toolInstructions += buildDataFieldsPrompt(dataFields);
   }
 
   // Archivos que el agente puede enviar (imágenes y PDFs)
@@ -147,7 +157,7 @@ Usa la herramienta de eventos cuando:
 `;
   }
 
-  const leadState = buildLeadState(agent.required_info, options?.leadData);
+  const leadState = buildLeadState(dataFields, options?.leadData);
 
   return `Eres un agente de ventas por WhatsApp para ${agent.business_name}.
 

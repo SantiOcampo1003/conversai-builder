@@ -13,6 +13,8 @@ export interface Agent {
   objection_handling: string | null;
   agent_personality: AgentPersonality | null;
   required_info: string[] | null;
+  /** Datos que recoge el agente (clave, encabezado de columna, descripción). Ver langchain/data-fields.ts */
+  data_fields?: DataField[] | null;
   warranty: string | null;
   payment_gateway: string | null;
   payment_links: Record<string, string> | null;
@@ -22,6 +24,17 @@ export interface Agent {
   model?: string;
   temperature?: number;
   max_tokens?: number;
+}
+
+export interface DataField {
+  /** Clave técnica estable (snake_case, sin tildes). Es la que usa la herramienta y la base de datos. */
+  key: string;
+  /** Encabezado de la columna en Excel / Google Sheets. */
+  label: string;
+  /** Qué va en este dato y cómo llenarlo (se le muestra al modelo). */
+  description?: string;
+  /** Si el agente debe pedirlo antes de cerrar. Por defecto true. */
+  required?: boolean;
 }
 
 export interface CustomInstruction {

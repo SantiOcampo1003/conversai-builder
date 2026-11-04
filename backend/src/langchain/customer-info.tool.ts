@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { DatabaseService } from '../database/database.service';
+import { DataField } from '../common/types/agent.types';
 
 /**
  * Creates a dynamic tool for saving customer information
@@ -10,8 +11,9 @@ export function createCustomerInfoTool(
   databaseService: DatabaseService,
   agentId: string,
   customerId: string, // WhatsApp phone number
-  requiredInfo: string[] = [],
+  dataFields: DataField[] = [],
 ) {
+  const requiredInfo = dataFields.map((f) => f.key);
   // Build dynamic schema based on required_info
   const schemaFields: Record<string, z.ZodTypeAny> = {};
 
@@ -30,11 +32,17 @@ export function createCustomerInfoTool(
 
   // Add fields based on required_info
   if (requiredInfo.length > 0) {
-    requiredInfo.forEach((field) => {
-      const normalizedField = field.toLowerCase().trim();
+    dataFields.forEach((df) => {
+      const normalizedField = df.key.toLowerCase().trim();
       const mapping = fieldMapping[normalizedField];
 
-      if (mapping) {
+      if (df.description) {
+        // Campo definido por el cliente con su descripción: texto libre, con la descripción como guía
+        schemaFields[normalizedField] = z
+          .string()
+          .describe(`${df.label}: ${df.description}`)
+          .optional();
+      } else if (mapping) {
         schemaFields[mapping.key] = mapping.type.optional();
       } else {
         // Campo personalizado: se describe a partir de su nombre para que el modelo sepa qué va en él
