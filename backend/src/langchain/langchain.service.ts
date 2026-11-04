@@ -13,6 +13,7 @@ import { createCustomerInfoTool } from './customer-info.tool';
 import { resolveDataFields } from './data-fields';
 import { extractLeakedArgs, hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
 import { GoogleSheetsService } from '../integrations/google-sheets.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { createSendFileTool } from './agent-assets.tool';
 import { resolveModelName, resolveTemperature } from './model.config';
 import { createMetaTrackingTool, TrackedEventConfig, MetaEventName } from './meta-tracking.tool';
@@ -32,6 +33,7 @@ export class LangchainService {
     private configService: ConfigService,
     private databaseService: DatabaseService,
     @Optional() private googleSheets?: GoogleSheetsService,
+    @Optional() private notifications?: NotificationsService,
   ) {}
 
   async executeAgent(
@@ -107,6 +109,7 @@ export class LangchainService {
         dataFields,
         () => {
           void this.googleSheets?.syncLead(agent.agent_id, userId);
+          void this.notifications?.notifyIfComplete(agent.agent_id, userId);
         },
       );
 

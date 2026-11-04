@@ -166,8 +166,8 @@ Usa la herramienta de eventos cuando:
     dataFields.length === 0 || !options?.contactId
       ? ''
       : contactPhone
-        ? `Número de WhatsApp de esta persona: +${contactPhone}. Ya lo tienes: NO se lo pidas. Si necesitas su teléfono para la llamada, solo confirma que sea ese mismo número.\n`
-        : 'El número de teléfono de esta persona NO está disponible (WhatsApp lo oculta). Si hace falta para la llamada, pídeselo.\n';
+        ? `Número de WhatsApp de esta persona (solo de referencia): +${contactPhone}. Aun así, para la llamada pídele que ESCRIBA el número completo; si responde "el mismo" o "este", pídele que lo escriba igual, para evitar errores.\n`
+        : 'El número de teléfono de esta persona NO está disponible (WhatsApp lo oculta). Para la llamada pídele que ESCRIBA el número completo.\n';
   const leadState = buildLeadState(dataFields, options?.leadData) + (phoneNote ? `\n${phoneNote}` : '');
 
   return `Eres un agente de ventas por WhatsApp para ${agent.business_name}.

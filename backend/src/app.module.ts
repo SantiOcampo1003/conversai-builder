@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { LangchainModule } from './langchain/langchain.module';
 import { EmailModule } from './email/email.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
     ChatModule,
     EmailModule,
     IntegrationsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

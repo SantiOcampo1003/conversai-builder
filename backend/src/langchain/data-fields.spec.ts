@@ -91,15 +91,16 @@ describe('teléfono del contacto en el prompt', () => {
     required_info: ['ciudad'], data_fields: null,
   };
 
-  it('si el identificador es un teléfono real, el agente no lo pide', () => {
+  it('con teléfono real lo da de referencia, pero igual pide que lo escriba', () => {
     const txt = buildBusinessInfo(agent, { contactId: '573059357319' });
-    expect(txt).toContain('Número de WhatsApp de esta persona: +573059357319');
-    expect(txt).toContain('NO se lo pidas');
+    expect(txt).toContain('Número de WhatsApp de esta persona (solo de referencia): +573059357319');
+    expect(txt).toContain('ESCRIBA el número completo');
   });
 
-  it('si es @lid, avisa que no hay teléfono y que se pida si hace falta', () => {
+  it('si es @lid, avisa que no hay teléfono y que se pida escrito', () => {
     const txt = buildBusinessInfo(agent, { contactId: '158621866397825@lid' });
     expect(txt).toContain('NO está disponible');
+    expect(txt).toContain('ESCRIBA el número completo');
     expect(txt).not.toContain('+158621866397825');
   });
 
