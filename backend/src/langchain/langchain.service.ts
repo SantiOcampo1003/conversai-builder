@@ -11,6 +11,7 @@ import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { resolveDataFields } from './data-fields';
+import { hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
 import { GoogleSheetsService } from '../integrations/google-sheets.service';
 import { createSendFileTool } from './agent-assets.tool';
 import { resolveModelName, resolveTemperature } from './model.config';
@@ -166,7 +167,9 @@ export class LangchainService {
 
       // El resultado viene en result.messages, el último es la respuesta del agente
       const lastMessage = result.messages[result.messages.length - 1];
-      const responseText = lastMessage.content as string;
+      const rawText = lastMessage.content as string;
+      if (hasLeakedToolText(rawText)) console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+      const responseText = stripLeakedToolText(rawText);
 
       // Contar cuántas iteraciones y tool calls se hicieron
       const toolCallMessages = result.messages.filter(
@@ -223,7 +226,9 @@ export class LangchainService {
       },
     );
 
-    const responseText = response.content as string;
+    const rawText = response.content as string;
+    if (hasLeakedToolText(rawText)) console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+    const responseText = stripLeakedToolText(rawText);
 
     console.log(`✅ Respuesta generada: ${responseText.substring(0, 50)}...`);
     console.log(`📊 Tokens totales: ${tokenCounter.totalTokens}`);
