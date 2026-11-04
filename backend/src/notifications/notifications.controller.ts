@@ -3,6 +3,10 @@ import { IsNotEmpty, IsString } from 'class-validator';
 import { AgentAccessService } from '../common/agent-access.service';
 import { NotificationsService } from './notifications.service';
 
+class AgentDto {
+  @IsString() @IsNotEmpty() agentId: string;
+}
+
 class TestDto {
   @IsString() @IsNotEmpty() agentId: string;
   @IsString() @IsNotEmpty() phone: string;
@@ -21,5 +25,14 @@ export class NotificationsController {
     await this.access.assertCanManage(auth, dto.agentId);
     const error = await this.notifications.sendTest(dto.agentId, dto.phone);
     return { ok: !error, error };
+  }
+
+  /** Envía los avisos que no salieron (contactos completos sin notificar). */
+  @Post('send-pending')
+  @HttpCode(200)
+  async sendPending(@Headers('authorization') auth: string | undefined, @Body() dto: AgentDto) {
+    await this.access.assertCanManage(auth, dto.agentId);
+    const result = await this.notifications.notifyPending(dto.agentId);
+    return { ok: true, ...result };
   }
 }

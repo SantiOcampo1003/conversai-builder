@@ -6,6 +6,8 @@ export interface DataField {
   label: string
   description?: string
   required: boolean
+  /** El dato solo aplica cuando otro dato tiene uno de estos valores (ej. posición y club solo en fútbol). */
+  only_when?: { field: string; in: string[] }
 }
 
 /** "Nombre del talento" -> "nombre_del_talento" (clave técnica estable). */
@@ -25,6 +27,13 @@ function humanize(key: string): string {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : key
 }
 
+function cleanCondition(c: unknown): DataField['only_when'] {
+  const cond = c as { field?: unknown; in?: unknown } | null | undefined
+  if (!cond || typeof cond.field !== 'string' || !Array.isArray(cond.in)) return undefined
+  const values = cond.in.filter((v): v is string => typeof v === 'string' && v.trim() !== '').map(v => v.trim())
+  return cond.field && values.length > 0 ? { field: cond.field, in: values } : undefined
+}
+
 /** Datos del agente: data_fields si existe; si no, se derivan de required_info (agentes antiguos). */
 export function readDataFields(agent: {
   data_fields?: unknown
@@ -36,6 +45,7 @@ export function readDataFields(agent: {
       label: String(f.label ?? ''),
       description: f.description ? String(f.description) : '',
       required: f.required !== false,
+      only_when: cleanCondition(f.only_when),
     }))
   }
   return (agent.required_info ?? []).map(k => ({
@@ -57,7 +67,7 @@ export function cleanDataFields(fields: DataField[]): { fields?: DataField[]; er
     if (!key) return { error: `La columna "${label}" necesita letras o números en el nombre.` }
     if (seen.has(key)) return { error: `Hay dos columnas que quedan con la misma clave ("${key}"). Cambia el nombre de una.` }
     seen.add(key)
-    out.push({ key, label, description: f.description?.trim() || '', required: f.required })
+    out.push({ key, label, description: f.description?.trim() || '', required: f.required, only_when: cleanCondition(f.only_when) })
   }
   return { fields: out }
 }
@@ -67,10 +77,19 @@ export const STAGE_IN_PROGRESS = 'En conversación'
 export const STAGE_READY = 'Listo para closer'
 
 const hasValue = (v: unknown) => v != null && String(v).trim() !== ''
+const norm = (v: unknown) => String(v ?? '').trim().toLowerCase()
+
+/** Si el dato aplica a este contacto (misma regla que el backend: langchain/lead-stage.ts). */
+export function isApplicable(field: DataField, data: Record<string, unknown> | null | undefined): boolean {
+  const cond = field.only_when
+  if (!cond || !cond.field || cond.in.length === 0) return true
+  const current = norm((data ?? {})[cond.field])
+  return current !== '' && cond.in.some(v => norm(v) === current)
+}
 
 export function computeStage(fields: DataField[], additional: Record<string, unknown> | null | undefined) {
   const data = additional ?? {}
-  const required = fields.filter(f => f.required !== false)
+  const required = fields.filter(f => f.required !== false && isApplicable(f, data))
   const missing = required.filter(f => !hasValue(data[f.key]))
   const complete = required.length > 0 && missing.length === 0
   return { complete, label: complete ? STAGE_READY : STAGE_IN_PROGRESS, missing }
@@ -118,6 +137,7 @@ export async function downloadLeadsExcel(agentId: string, fields: DataField[], f
     .from('leads')
     .select('customer_id,status,source,created_at,updated_at,additional_fields')
     .eq('agent_id', agentId)
+    .not('customer_id', 'like', 'test\\_%')
     .order('created_at', { ascending: false })
     .limit(5000)
   if (error) throw new Error(error.message)

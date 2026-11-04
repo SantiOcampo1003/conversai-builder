@@ -1,5 +1,13 @@
 import { Agent, DataField } from '../common/types/agent.types';
 
+function cleanCondition(c: unknown): DataField['only_when'] {
+  const cond = c as { field?: unknown; in?: unknown } | null | undefined;
+  if (!cond || typeof cond.field !== 'string' || !Array.isArray(cond.in)) return undefined;
+  const values = cond.in.filter((v): v is string => typeof v === 'string' && v.trim() !== '').map((v) => v.trim());
+  const field = slugifyKey(cond.field);
+  return field && values.length > 0 ? { field, in: values } : undefined;
+}
+
 /** Clave técnica estable a partir de un texto libre: "Nombre del talento" -> "nombre_del_talento". */
 export function slugifyKey(text: string): string {
   return text
@@ -40,6 +48,7 @@ export function resolveDataFields(
       label: String(field.label ?? '').trim() || humanizeKey(key),
       description: String(field.description ?? '').trim() || undefined,
       required: field.required !== false,
+      only_when: cleanCondition(field.only_when),
     });
   };
 
@@ -62,7 +71,10 @@ export function buildDataFieldsPrompt(fields: DataField[]): string {
   const lines = fields.map((f, i) => {
     const detail = f.description ? `: ${f.description}` : '';
     const req = f.required ? '' : ' (opcional)';
-    return `${i + 1}. ${f.key} — ${f.label}${req}${detail}`;
+    const when = f.only_when
+      ? ` SOLO si ${fields.find((x) => x.key === f.only_when!.field)?.label ?? f.only_when.field} es: ${f.only_when.in.join(', ')}; en cualquier otro caso NO lo pidas.`
+      : '';
+    return `${i + 1}. ${f.key} — ${f.label}${req}${detail}${when}`;
   });
   return `\n=== DATOS A RECOGER (guárdalos con la herramienta, usando exactamente la clave indicada) ===
 ${lines.join('\n')}

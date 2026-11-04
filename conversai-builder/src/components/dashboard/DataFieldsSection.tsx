@@ -112,6 +112,30 @@ export function DataFieldsSection({ agent, saving, onSave }: Props) {
                 Obligatorio: el agente lo pide antes de cerrar
               </Label>
             </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Solo pedirlo si</span>
+              <select
+                value={f.only_when?.field ?? ''}
+                onChange={e => update(i, { only_when: e.target.value ? { field: e.target.value, in: f.only_when?.in ?? [] } : undefined })}
+                className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+              >
+                <option value="">(siempre se pide)</option>
+                {fields.filter((o, idx) => idx !== i && o.label.trim()).map(o => (
+                  <option key={o.key || o.label} value={o.key || toFieldKey(o.label)}>{o.label}</option>
+                ))}
+              </select>
+              {f.only_when && (
+                <>
+                  <span>es uno de:</span>
+                  <Input
+                    value={f.only_when.in.join(', ')}
+                    onChange={e => update(i, { only_when: { field: f.only_when!.field, in: e.target.value.split(',').map(v => v.trimStart()) } })}
+                    placeholder="valores separados por coma, ej. CLAN Football Academy, Cantera CLAN"
+                    className="h-7 text-xs flex-1 min-w-[220px]"
+                  />
+                </>
+              )}
+            </div>
           </div>
         ))}
 

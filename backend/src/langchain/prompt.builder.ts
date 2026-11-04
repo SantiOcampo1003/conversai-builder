@@ -1,5 +1,5 @@
 import { Agent, AgentAsset, DataField } from '../common/types/agent.types';
-import { phoneFromContactId } from './lead-stage';
+import { isApplicable, phoneFromContactId } from './lead-stage';
 import { buildDataFieldsPrompt, hasExplicitDataFields, resolveDataFields } from './data-fields';
 
 /** Regla por defecto para fotos de producto sin condición propia. */
@@ -32,7 +32,8 @@ export function buildLeadState(
   }
 
   const lines = [...saved.entries()].map(([k, v]) => `- ${k}: ${v}`);
-  const missing = fields.filter((f) => !saved.has(normKey(f.key)));
+  const dataObj: Record<string, unknown> = leadData ?? {};
+  const missing = fields.filter((f) => isApplicable(f, dataObj) && !saved.has(normKey(f.key)));
   const pending = missing.filter((f) => f.required !== false).map((f) => f.key);
   const optional = missing.filter((f) => f.required === false).map((f) => f.key);
 

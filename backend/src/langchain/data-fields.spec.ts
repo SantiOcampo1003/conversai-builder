@@ -108,3 +108,25 @@ describe('teléfono del contacto en el prompt', () => {
     expect(buildBusinessInfo(agent, {})).not.toContain('Número de WhatsApp de esta persona');
   });
 });
+
+describe('only_when en datos a recoger', () => {
+  const agent: any = {
+    agent_id: 'a', business_name: 'X', business_type: 't', business_category: 'c', required_info: [],
+    data_fields: [
+      { key: 'programa', label: 'Programa', required: true },
+      { key: 'posicion', label: 'Posición y club', description: 'club y posición', required: true, only_when: { field: 'Programa', in: ['Fútbol', ' '] } },
+    ],
+  };
+
+  it('resolveDataFields conserva y normaliza la condición', () => {
+    expect(resolveDataFields(agent)[1].only_when).toEqual({ field: 'programa', in: ['Fútbol'] });
+  });
+
+  it('el prompt explica cuándo aplica y el estado no pide los que no aplican', () => {
+    const txt = buildBusinessInfo(agent, { leadData: { programa: 'Atelier' } });
+    expect(txt).toContain('SOLO si Programa es: Fútbol; en cualquier otro caso NO lo pidas.');
+    expect(txt).toContain('Pendientes: ninguno');
+    const txt2 = buildBusinessInfo(agent, { leadData: { programa: 'Fútbol' } });
+    expect(txt2).toContain('Pendientes: posicion');
+  });
+});

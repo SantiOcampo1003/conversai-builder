@@ -24,6 +24,7 @@ export function NotificationsSection({ agent }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
+  const [sendingPending, setSendingPending] = useState(false)
   const [notificationId, setNotificationId] = useState<string | null>(null)
   const [enabled, setEnabled] = useState(true)
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE)
@@ -147,6 +148,34 @@ export function NotificationsSection({ agent }: Props) {
     }
   }
 
+  const sendPending = async () => {
+    const base = backendBase()
+    setSendingPending(true)
+    try {
+      if (!base) throw new Error('Falta configurar VITE_BACKEND_CHAT_URL')
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (!token) throw new Error('Vuelve a iniciar sesión')
+      const res = await fetch(`${base}/api/notifications/send-pending`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ agentId: agent.agent_id }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.message ?? `Error ${res.status}`)
+      toast({
+        title: `Avisos enviados: ${json.sent}`,
+        description: json.failed ? `${json.failed} no se pudieron enviar (revisa el registro de abajo).` : 'Los contactos completos que faltaban ya se avisaron.',
+        variant: json.failed ? 'destructive' : undefined,
+      })
+      await load()
+    } catch (e) {
+      toast({ title: 'No se pudo enviar', description: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setSendingPending(false)
+    }
+  }
+
   if (loading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
 
   const routeLabel = fields.find(f => f.key === routeField)?.label
@@ -236,6 +265,11 @@ export function NotificationsSection({ agent }: Props) {
         <Button onClick={save} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Guardar
+        </Button>
+        <Button variant="outline" onClick={sendPending} disabled={sendingPending || !notificationId} className="gap-2"
+          title="Envía el aviso de los contactos que ya están completos y todavía no se avisaron">
+          {sendingPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          Enviar avisos pendientes
         </Button>
         {message && (
           <span className={`flex items-center gap-1.5 text-sm ${message.ok ? 'text-emerald-500' : 'text-destructive'}`}>

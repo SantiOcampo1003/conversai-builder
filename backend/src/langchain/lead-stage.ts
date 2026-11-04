@@ -12,12 +12,21 @@ export interface LeadStage {
   missing: string[];
 }
 
+const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
 const hasValue = (v: unknown) => (typeof v === 'string' ? v.trim() !== '' : v != null && String(v).trim() !== '');
+
+/** Si el dato aplica a este contacto: sin condición siempre; con condición, solo si el otro dato tiene uno de los valores. */
+export function isApplicable(field: DataField, data: Record<string, unknown> | null | undefined): boolean {
+  const cond = field.only_when;
+  if (!cond || !cond.field || !Array.isArray(cond.in) || cond.in.length === 0) return true;
+  const current = norm((data ?? {})[cond.field]);
+  return current !== '' && cond.in.some((v) => norm(v) === current);
+}
 
 /** Etapa según los datos guardados: "Listo para closer" solo cuando no falta ningún dato obligatorio. */
 export function computeStage(fields: DataField[], additional: Record<string, unknown> | null | undefined): LeadStage {
   const data = additional ?? {};
-  const required = fields.filter((f) => f.required !== false);
+  const required = fields.filter((f) => f.required !== false && isApplicable(f, data));
   const missing = required.filter((f) => !hasValue(data[f.key])).map((f) => f.key);
   const complete = required.length > 0 && missing.length === 0;
   return { complete, label: complete ? STAGE_READY : STAGE_IN_PROGRESS, missing };

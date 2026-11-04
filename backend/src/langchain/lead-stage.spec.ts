@@ -41,3 +41,31 @@ describe('phoneFromContactId', () => {
     expect(phoneFromContactId(null)).toBeNull();
   });
 });
+
+import { isApplicable } from './lead-stage';
+
+describe('datos condicionales por programa', () => {
+  const fields = [
+    { key: 'programa', label: 'Programa', required: true },
+    { key: 'ciudad', label: 'Ciudad', required: true },
+    { key: 'posicion', label: 'Posición y club', required: true, only_when: { field: 'programa', in: ['CLAN Football Academy', 'Cantera CLAN'] } },
+  ];
+
+  it('un dato condicional no aplica si el programa es otro, ni mientras el programa se desconoce', () => {
+    expect(isApplicable(fields[2], { programa: 'CLAN Atelier' })).toBe(false);
+    expect(isApplicable(fields[2], {})).toBe(false);
+    expect(isApplicable(fields[2], { programa: '  cantera clan ' })).toBe(true);
+    expect(isApplicable(fields[0], {})).toBe(true);
+  });
+
+  it('Atelier queda "Listo para closer" sin el dato de fútbol', () => {
+    expect(computeStage(fields, { programa: 'CLAN Atelier', ciudad: 'Bogotá' }).complete).toBe(true);
+  });
+
+  it('fútbol sí exige el dato de fútbol', () => {
+    const s = computeStage(fields, { programa: 'Cantera CLAN', ciudad: 'Bogotá' });
+    expect(s.complete).toBe(false);
+    expect(s.missing).toEqual(['posicion']);
+    expect(computeStage(fields, { programa: 'Cantera CLAN', ciudad: 'Bogotá', posicion: 'Delantero, Millonarios' }).complete).toBe(true);
+  });
+});
