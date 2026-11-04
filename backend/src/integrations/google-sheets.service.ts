@@ -157,7 +157,7 @@ export class GoogleSheetsService {
    * Nunca lanza: un fallo de Google no debe afectar la conversación.
    */
   async syncLead(agentId: string, customerId: string): Promise<void> {
-    if (!this.isConfigured()) return;
+    if (!this.isConfigured() || customerId.startsWith('test_')) return;
     try {
       const int = await this.getIntegration(agentId);
       if (!int || !int.enabled) return;
@@ -241,6 +241,7 @@ export class GoogleSheetsService {
         .from('leads')
         .select('customer_id,status,created_at,updated_at,additional_fields')
         .eq('agent_id', agentId)
+        .not('customer_id', 'like', 'test\\_%')
         .order('created_at', { ascending: false })
         .limit(5000);
       if (error) throw new Error(error.message);

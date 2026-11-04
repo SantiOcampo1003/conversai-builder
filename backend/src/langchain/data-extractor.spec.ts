@@ -56,3 +56,23 @@ describe('extractData', () => {
     expect(run).not.toHaveBeenCalled();
   });
 });
+
+describe('acuses, rechazos y datos condicionales', () => {
+  it('"ok", "gracias" y similares no son datos', () => {
+    expect(cleanExtraction({ a: 'ok', b: 'Gracias', c: 'dale', d: 'Bogotá' }, ['a', 'b', 'c', 'd'])).toEqual({ d: 'Bogotá' });
+  });
+  it('el rechazo explícito se guarda como "No quiso decirlo"', () => {
+    expect(cleanExtraction({ colegio: 'No quiso decirlo' }, ['colegio'])).toEqual({ colegio: 'No quiso decirlo' });
+  });
+  it('el prompt enseña a marcar los rechazos', () => {
+    expect(buildExtractorPrompt({ fields, userMessage: 'prefiero no decirlo' }).system).toContain('"No quiso decirlo"');
+  });
+  it('no pide al extractor los datos que no aplican', () => {
+    const f = [
+      { key: 'programa', label: 'Programa', required: true },
+      { key: 'club', label: 'Club', required: true, only_when: { field: 'programa', in: ['Fútbol'] } },
+    ];
+    expect(pendingFields(f, { programa: 'Atelier' }).map((x) => x.key)).toEqual([]);
+    expect(pendingFields(f, { programa: 'Fútbol' }).map((x) => x.key)).toEqual(['club']);
+  });
+});

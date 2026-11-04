@@ -1,4 +1,5 @@
 import { DataField } from '../common/types/agent.types';
+import { isApplicable } from './lead-stage';
 
 /**
  * Extractor de datos: lee el mensaje de la persona y saca los datos que contiene, ANTES de que el agente
@@ -7,14 +8,17 @@ import { DataField } from '../common/types/agent.types';
  */
 
 /** Valores que no son datos reales aunque el modelo los devuelva. */
-const EMPTY_LIKE = /^(null|none|n\/a|na|ninguno|ninguna|desconocido|undefined|no especificado|no especifica|no indica|no sé|no se|sin dato|-)$/i;
+const EMPTY_LIKE = /^(null|none|n\/a|na|ninguno|ninguna|desconocido|undefined|no especificado|no especifica|no indica|no sé|no se|sin dato|-|ok|okey|okay|vale|dale|listo|gracias|muchas gracias|claro|bueno|perfecto|hola|buenas)$/i;
+
+/** Valor interno cuando la persona se niega explícitamente a dar un dato que se le acaba de preguntar. */
+export const REFUSED_VALUE = 'No quiso decirlo';
 
 const hasValue = (v: unknown) => v != null && String(v).trim() !== '';
 
 /** Datos del agente que todavía no tienen valor guardado (solo estos se piden al extractor). */
 export function pendingFields(fields: DataField[], saved: Record<string, unknown> | null | undefined): DataField[] {
   const data = saved ?? {};
-  return fields.filter((f) => !hasValue(data[f.key]));
+  return fields.filter((f) => isApplicable(f, data) && !hasValue(data[f.key]));
 }
 
 export interface ExtractorInput {
@@ -41,7 +45,8 @@ Reglas:
 - NO inventes, NO completes y NO deduzcas. Si un dato no aparece de forma clara, devuélvelo como null.
 - Copia el valor como lo dijo la persona (nombres completos con todos sus apellidos). Nada de explicaciones.
 - Si el valor depende de una lista cerrada (la descripción dice "uno de: …"), devuelve exactamente uno de esos valores solo si la persona lo nombra de forma explícita; si no, null.
-- Un saludo, una pregunta o un "ok" sin dato NO es un dato: devuelve todo en null.
+- Un saludo, una pregunta, un agradecimiento o un "ok" sin dato NO es un dato: devuelve todo en null.
+- Si la persona se niega de forma explícita a dar el dato que el asistente acaba de preguntar ("prefiero no decirlo", "no quiero dar eso"), devuelve exactamente "No quiso decirlo" para ESE dato y null para los demás.
 
 Datos que puedes extraer:
 ${list}`;

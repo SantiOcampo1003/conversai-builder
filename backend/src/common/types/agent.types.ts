@@ -35,6 +35,11 @@ export interface DataField {
   description?: string;
   /** Si el agente debe pedirlo antes de cerrar. Por defecto true. */
   required?: boolean;
+  /**
+   * El dato solo aplica cuando otro dato del contacto tiene uno de estos valores (ej. "posición y club" solo si el
+   * programa es de fútbol). Si no se cumple, no se pide ni cuenta como pendiente.
+   */
+  only_when?: { field: string; in: string[] };
 }
 
 export interface CustomInstruction {

@@ -83,10 +83,12 @@ export class NotificationsService {
    * y no se avisó antes, envía el mensaje al closer que corresponde. Una sola vez por contacto.
    * Nunca lanza: un fallo aquí no debe afectar la conversación.
    */
-  async notifyIfComplete(agentId: string, customerId: string): Promise<void> {
+  async notifyIfComplete(agentId: string, customerId: string): Promise<'sent' | 'skipped' | 'failed'> {
+    // Los contactos de prueba nunca avisan a nadie
+    if (customerId.startsWith('test_')) return 'skipped';
     try {
       const cfg = await this.loadNotification(agentId);
-      if (!cfg || !cfg.n.enabled) return;
+      if (!cfg || !cfg.n.enabled) return 'skipped';
 
       const fields = await this.loadAgent(agentId);
       const admin = this.db.getAdminClient();
@@ -96,9 +98,9 @@ export class NotificationsService {
         .eq('agent_id', agentId)
         .eq('customer_id', customerId)
         .maybeSingle();
-      if (!lead || (lead as any).notified_at) return;
+      if (!lead || (lead as any).notified_at) return 'skipped';
       const data = ((lead as any).additional_fields ?? {}) as Record<string, unknown>;
-      if (!computeStage(fields, data).complete) return;
+      if (!computeStage(fields, data).complete) return 'skipped';
 
       // Reclamar el aviso de forma atómica: si dos guardados llegan a la vez, solo uno envía.
       const { data: claimed } = await admin
@@ -108,12 +110,13 @@ export class NotificationsService {
         .eq('customer_id', customerId)
         .is('notified_at', null)
         .select('customer_id');
-      if (!claimed || claimed.length === 0) return;
+      if (!claimed || claimed.length === 0) return 'skipped';
 
       const recipients = pickRecipients(cfg.recipients, cfg.n.route_field, data);
       if (recipients.length === 0) {
         await this.log({ agent_id: agentId, notification_id: cfg.n.id, customer_id: customerId, recipient_phone: '-', status: 'failed', error: 'No hay destinatarios para este contacto' });
-        return;
+        await admin.from('leads').update({ notified_at: null }).eq('agent_id', agentId).eq('customer_id', customerId);
+        return 'failed';
       }
 
       const instance = await this.instanceOf(agentId);
@@ -131,10 +134,35 @@ export class NotificationsService {
         });
       }
       // Si no salió ninguno, se libera para reintentar en el siguiente guardado
-      if (sent === 0) await admin.from('leads').update({ notified_at: null }).eq('agent_id', agentId).eq('customer_id', customerId);
+      if (sent === 0) {
+        await admin.from('leads').update({ notified_at: null }).eq('agent_id', agentId).eq('customer_id', customerId);
+        return 'failed';
+      }
+      return 'sent';
     } catch (e) {
       this.logger.error(`Notificación falló (${agentId}/${customerId}): ${(e as Error).message}`);
+      return 'failed';
     }
+  }
+
+  /**
+   * Envía los avisos que no salieron: contactos reales ya completos con notified_at vacío (por ejemplo, completos
+   * antes de configurar los closers). Uno por uno; el reclamo atómico evita duplicados.
+   */
+  async notifyPending(agentId: string): Promise<{ sent: number; skipped: number; failed: number }> {
+    const { data } = await this.db
+      .getAdminClient()
+      .from('leads')
+      .select('customer_id')
+      .eq('agent_id', agentId)
+      .is('notified_at', null)
+      .not('customer_id', 'like', 'test\\_%')
+      .limit(500);
+    const out = { sent: 0, skipped: 0, failed: 0 };
+    for (const l of (data ?? []) as { customer_id: string }[]) {
+      out[await this.notifyIfComplete(agentId, l.customer_id)]++;
+    }
+    return out;
   }
 
   /** Envía un mensaje de prueba a un destinatario YA guardado de este agente (no sirve para escribir a números cualquiera). */
