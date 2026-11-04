@@ -7,7 +7,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { supabase } from '@/lib/supabase'
 import {
   Store, DollarSign, Truck, MessageCircle, Sparkles, CheckCircle2,
-  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings, Paperclip, ClipboardList, Table2,
+  ChevronLeft, Loader2, Save, Plus, Trash2, Check, Target, Key, Settings, Paperclip, ClipboardList, Table2, Bell,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,7 @@ import { ProductPhotos } from '@/components/dashboard/ProductPhotos'
 import { AgentAssetRow, listAgentAssets, pruneProductAssets } from '@/lib/agent-assets'
 import { DataFieldsSection } from '@/components/dashboard/DataFieldsSection'
 import { GoogleSheetsSection } from '@/components/dashboard/GoogleSheetsSection'
+import { NotificationsSection } from '@/components/dashboard/NotificationsSection'
 import type { DataField } from '@/lib/data-fields'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ interface MetaAdsConfig {
   }[]
 }
 
-type SectionId = 'business' | 'products' | 'assets' | 'data' | 'sheets' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
+type SectionId = 'business' | 'products' | 'assets' | 'data' | 'sheets' | 'notifications' | 'payments' | 'faqs' | 'personality' | 'advanced' | 'meta-ads'
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'business',     label: 'Negocio',          icon: Store,         description: 'Nombre, tipo y categoría' },
@@ -90,6 +91,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ElementType; descrip
   { id: 'assets',       label: 'Archivos',          icon: Paperclip,     description: 'Fotos y PDFs que envía' },
   { id: 'data',         label: 'Datos a recoger',   icon: ClipboardList, description: 'Columnas de Excel y Sheets' },
   { id: 'sheets',       label: 'Google Sheets',     icon: Table2,        description: 'Enviar datos a tu hoja' },
+  { id: 'notifications', label: 'Notificaciones',   icon: Bell,          description: 'Avisar al closer o equipo' },
   { id: 'payments',     label: 'Pagos y entrega',   icon: Truck,         description: 'Métodos y envíos' },
   { id: 'faqs',         label: 'FAQs',              icon: MessageCircle, description: 'Preguntas frecuentes' },
   { id: 'personality',  label: 'Personalidad',      icon: Sparkles,      description: 'Tono y estilo' },
@@ -294,6 +296,7 @@ export default function AgentEditor() {
             )}
             {activeSection === 'data'        && <DataFieldsSection agent={agent} saving={saving} onSave={save} />}
             {activeSection === 'sheets'      && <GoogleSheetsSection agentId={agent.agent_id} />}
+            {activeSection === 'notifications' && <NotificationsSection agent={agent} />}
             {activeSection === 'payments'    && <PaymentsSection    agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'faqs'        && <FaqsSection        agent={agent} onSave={save} saving={saving} />}
             {activeSection === 'personality' && <PersonalitySection agent={agent} onSave={save} saving={saving} />}
