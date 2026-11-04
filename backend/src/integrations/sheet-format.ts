@@ -1,6 +1,7 @@
 import { DataField } from '../common/types/agent.types';
+import { computeStage, phoneFromContactId } from '../langchain/lead-stage';
 
-export const FIXED_HEADERS = ['Fecha de creación', 'Última actualización', 'Contacto', 'Estado'] as const;
+export const FIXED_HEADERS = ['Fecha de creación', 'Última actualización', 'Contacto', 'Teléfono', 'Etapa'] as const;
 /** Columna (0-based) donde va el contacto: es la clave para encontrar la fila de cada persona. */
 export const CONTACT_COLUMN_INDEX = 2;
 
@@ -39,7 +40,8 @@ export function buildLeadRow(lead: LeadForSheet, fields: DataField[]): string[] 
     fmtDate(lead.created_at),
     fmtDate(lead.updated_at),
     safeCell(lead.customer_id),
-    safeCell(lead.status ?? ''),
+    safeCell(phoneFromContactId(lead.customer_id) ?? ''),
+    computeStage(fields, data).label,
     ...fields.map((f) => safeCell(data[f.key])),
   ];
 }

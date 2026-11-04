@@ -1,0 +1,43 @@
+import { computeStage, phoneFromContactId, STAGE_IN_PROGRESS, STAGE_READY } from './lead-stage';
+
+const fields = [
+  { key: 'nombre', label: 'Nombre', required: true },
+  { key: 'ciudad', label: 'Ciudad', required: true },
+  { key: 'colegio', label: 'Colegio', required: false },
+];
+
+describe('computeStage', () => {
+  it('queda en conversación mientras falte un dato obligatorio', () => {
+    const s = computeStage(fields, { nombre: 'Ana' });
+    expect(s).toEqual({ complete: false, label: STAGE_IN_PROGRESS, missing: ['ciudad'] });
+  });
+
+  it('queda listo para closer sin necesitar los opcionales', () => {
+    const s = computeStage(fields, { nombre: 'Ana', ciudad: 'Bogotá' });
+    expect(s).toEqual({ complete: true, label: STAGE_READY, missing: [] });
+  });
+
+  it('los valores vacíos no cuentan como guardados', () => {
+    expect(computeStage(fields, { nombre: 'Ana', ciudad: '  ' }).complete).toBe(false);
+    expect(computeStage(fields, null).missing).toEqual(['nombre', 'ciudad']);
+  });
+
+  it('sin datos obligatorios definidos nunca queda listo', () => {
+    expect(computeStage([], { a: 'x' }).complete).toBe(false);
+  });
+});
+
+describe('phoneFromContactId', () => {
+  it('devuelve el número cuando el identificador es un teléfono', () => {
+    expect(phoneFromContactId('573059357319')).toBe('573059357319');
+    expect(phoneFromContactId('573059357319@s.whatsapp.net')).toBe('573059357319');
+    expect(phoneFromContactId('447710173736')).toBe('447710173736');
+  });
+
+  it('no inventa un teléfono para los @lid ni para identificadores de prueba', () => {
+    expect(phoneFromContactId('158621866397825@lid')).toBeNull();
+    expect(phoneFromContactId('test_claude_diag')).toBeNull();
+    expect(phoneFromContactId('')).toBeNull();
+    expect(phoneFromContactId(null)).toBeNull();
+  });
+});

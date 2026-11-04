@@ -59,6 +59,7 @@ export class LangchainService {
       assets,
       sentAssetKeys: [...sentKeys],
       leadData,
+      contactId: userId,
     });
     // El prompt completo incluye datos de la persona (nombres, etc.) y pesa ~35 KB por mensaje:
     // solo se imprime si se activa LOG_SYSTEM_PROMPT=true (útil para depurar).

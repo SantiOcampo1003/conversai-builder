@@ -4,6 +4,7 @@ import { GoogleAuth } from 'google-auth-library';
 import { DatabaseService } from '../database/database.service';
 import { DataField } from '../common/types/agent.types';
 import { resolveDataFields } from '../langchain/data-fields';
+import { computeStage } from '../langchain/lead-stage';
 import {
   CONTACT_COLUMN_INDEX,
   LeadForSheet,
@@ -19,6 +20,8 @@ interface Integration {
   enabled: boolean;
   spreadsheet_id: string;
   sheet_name: string;
+  /** Solo escribir contactos con todos los datos obligatorios (por defecto true). */
+  only_complete?: boolean;
 }
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -84,7 +87,7 @@ export class GoogleSheetsService {
     const { data, error } = await this.db
       .getAdminClient()
       .from('agent_integrations')
-      .select('id, agent_id, enabled, spreadsheet_id, sheet_name')
+      .select('*')
       .eq('agent_id', agentId)
       .eq('provider', 'google_sheets')
       .maybeSingle();
@@ -170,6 +173,8 @@ export class GoogleSheetsService {
             .eq('customer_id', customerId)
             .maybeSingle();
           if (!lead) return;
+          // Hoja para el closer: solo contactos con los datos obligatorios completos
+          if (int.only_complete !== false && !computeStage(fields, (lead as LeadForSheet).additional_fields).complete) return;
 
           await this.writeHeader(int, fields);
           const row = buildLeadRow(lead as LeadForSheet, fields);
@@ -241,7 +246,10 @@ export class GoogleSheetsService {
       if (error) throw new Error(error.message);
 
       const header = buildHeaderRow(fields);
-      const values = [header, ...((leads ?? []) as LeadForSheet[]).map((l) => buildLeadRow(l, fields))];
+      const rows = ((leads ?? []) as LeadForSheet[]).filter(
+        (l) => int.only_complete === false || computeStage(fields, l.additional_fields).complete,
+      );
+      const values = [header, ...rows.map((l) => buildLeadRow(l, fields))];
       await this.enqueue(int.spreadsheet_id, async () => {
         await this.ensureTab(int);
         const sheet = quoteSheetName(int.sheet_name);

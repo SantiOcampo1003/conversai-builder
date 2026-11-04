@@ -1,4 +1,5 @@
 import { Agent, AgentAsset, DataField } from '../common/types/agent.types';
+import { phoneFromContactId } from './lead-stage';
 import { buildDataFieldsPrompt, hasExplicitDataFields, resolveDataFields } from './data-fields';
 
 /** Regla por defecto para fotos de producto sin condición propia. */
@@ -51,6 +52,8 @@ export function buildBusinessInfo(
     sentAssetKeys?: string[];
     /** Datos del cliente ya guardados (leads.additional_fields). */
     leadData?: Record<string, unknown> | null;
+    /** Identificador de WhatsApp de la persona (número real o @lid). */
+    contactId?: string;
   },
 ): string {
   // Fotos de producto disponibles (agent_assets con product_id)
@@ -158,7 +161,14 @@ Usa la herramienta de eventos cuando:
 `;
   }
 
-  const leadState = buildLeadState(dataFields, options?.leadData);
+  const contactPhone = phoneFromContactId(options?.contactId);
+  const phoneNote =
+    dataFields.length === 0 || !options?.contactId
+      ? ''
+      : contactPhone
+        ? `Número de WhatsApp de esta persona: +${contactPhone}. Ya lo tienes: NO se lo pidas. Si necesitas su teléfono para la llamada, solo confirma que sea ese mismo número.\n`
+        : 'El número de teléfono de esta persona NO está disponible (WhatsApp lo oculta). Si hace falta para la llamada, pídeselo.\n';
+  const leadState = buildLeadState(dataFields, options?.leadData) + (phoneNote ? `\n${phoneNote}` : '');
 
   return `Eres un agente de ventas por WhatsApp para ${agent.business_name}.
 
