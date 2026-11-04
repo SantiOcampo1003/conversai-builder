@@ -5,12 +5,14 @@ import {
   ChatPromptTemplate,
   MessagesPlaceholder,
 } from '@langchain/core/prompts';
-import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
+import { HumanMessage, AIMessage, BaseMessage, SystemMessage } from '@langchain/core/messages';
+import { z } from 'zod';
 import { Agent, AgentAsset, ChatHistoryEntry, OutboundFile } from '../common/types/agent.types';
 import { buildBusinessInfo } from './prompt.builder';
 import { TokenCounterCallback } from './token.callback';
 import { createCustomerInfoTool } from './customer-info.tool';
 import { resolveDataFields } from './data-fields';
+import { ExtractorRunner, extractData } from './data-extractor';
 import { extractLeakedArgs, hasLeakedToolText, stripLeakedToolText } from './output-sanitizer';
 import { GoogleSheetsService } from '../integrations/google-sheets.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -53,6 +55,36 @@ export class LangchainService {
     const { assets, sentKeys } = await this.getAgentAssets(agent.agent_id, userId, agent.products);
     const outbox: OutboundFile[] = [];
 
+    // 1.8. Modelo base, contador de tokens y herramienta de guardado (también las usa el extractor de datos)
+    const baseModelConfig = {
+      modelName: resolveModelName(agent.model, this.configService.get<string>('OPENAI_MODEL')),
+      temperature: resolveTemperature(agent.temperature, this.configService.get<string>('OPENAI_TEMPERATURE')),
+      maxTokens: agent.max_tokens ?? 500,
+      openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
+    };
+    const tokenCounter = new TokenCounterCallback();
+
+    let customerInfoTool: ReturnType<typeof createCustomerInfoTool> | null = null;
+    const dataFields = resolveDataFields(agent);
+    if (dataFields.length > 0) {
+      customerInfoTool = createCustomerInfoTool(
+        this.databaseService,
+        agent.agent_id,
+        userId,
+        dataFields,
+        () => {
+          void this.googleSheets?.syncLead(agent.agent_id, userId);
+          void this.notifications?.notifyIfComplete(agent.agent_id, userId);
+        },
+      );
+    }
+
+    // 1.9. Extractor de datos: guarda lo que la persona dijo ANTES de que el agente responda,
+    // para no depender de que el modelo conversador decida llamar la herramienta.
+    if (customerInfoTool) {
+      await this.extractAndSave(agent, dataFields, chatHistory, userMessage, userId, baseModelConfig, tokenCounter, customerInfoTool);
+    }
+
     // 2. Construir businessInfo (con info de Meta Ads y archivos si están habilitados)
     const leadData = await this.getLeadData(agent.agent_id, userId);
 
@@ -80,39 +112,14 @@ export class LangchainService {
 
     console.log(`💬 Mensajes convertidos: ${messages.length}`);
 
-    // 4. Configurar modelo base (sin tools aún)
-    const baseModelConfig = {
-      modelName: resolveModelName(agent.model, this.configService.get<string>('OPENAI_MODEL')),
-      temperature: resolveTemperature(agent.temperature, this.configService.get<string>('OPENAI_TEMPERATURE')),
-      maxTokens: agent.max_tokens ?? 500,
-      openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
-    };
-
-    // 5. Token tracking
-    const tokenCounter = new TokenCounterCallback();
-
     // 6. Preparar tools (customer info + meta ads)
     const tools: any[] = [];
 
-    // 6.1. Customer Info Tool
-    let customerInfoTool: ReturnType<typeof createCustomerInfoTool> | null = null;
-    const dataFields = resolveDataFields(agent);
-    if (dataFields.length > 0) {
+    // 6.1. Customer Info Tool (creada arriba)
+    if (customerInfoTool) {
       console.log(
         `🔧 Tool habilitada: save_customer_info (campos: ${dataFields.map((f) => f.key).join(', ')})`,
       );
-
-      customerInfoTool = createCustomerInfoTool(
-        this.databaseService,
-        agent.agent_id,
-        userId,
-        dataFields,
-        () => {
-          void this.googleSheets?.syncLead(agent.agent_id, userId);
-          void this.notifications?.notifyIfComplete(agent.agent_id, userId);
-        },
-      );
-
       tools.push(customerInfoTool);
     }
 
@@ -268,6 +275,42 @@ export class LangchainService {
    * Si falla, devuelve null: el agente sigue funcionando sin ese estado.
    * @private
    */
+  /** Extrae del último mensaje los datos que el agente recoge y los guarda. Nunca lanza: si falla, el chat sigue. */
+  private async extractAndSave(
+    agent: Agent,
+    dataFields: ReturnType<typeof resolveDataFields>,
+    chatHistory: ChatHistoryEntry[],
+    userMessage: string,
+    userId: string,
+    modelConfig: { modelName: string; maxTokens: number; openAIApiKey?: string },
+    tokenCounter: TokenCounterCallback,
+    tool: ReturnType<typeof createCustomerInfoTool>,
+  ): Promise<void> {
+    if (this.configService.get<string>('DATA_EXTRACTOR') === 'off') return;
+    try {
+      const saved = await this.getLeadData(agent.agent_id, userId);
+      const lastAssistant = [...chatHistory].reverse().find((h) => h.role === 'assistant')?.message;
+
+      const run: ExtractorRunner = async (system, user, keys) => {
+        const schema = z.object(Object.fromEntries(keys.map((k) => [k, z.string().nullable()])));
+        const model = new ChatOpenAI({ ...modelConfig, temperature: 0, maxTokens: 300 });
+        const structured = model.withStructuredOutput(schema, { name: 'datos_extraidos' });
+        return (await structured.invoke(
+          [new SystemMessage(system), new HumanMessage(user)],
+          { callbacks: [tokenCounter] },
+        )) as Record<string, unknown>;
+      };
+
+      const extracted = await extractData({ fields: dataFields, userMessage, lastAssistant, saved }, run);
+      if (Object.keys(extracted).length > 0) {
+        await tool.invoke(extracted);
+        console.log(`🧲 Extractor guardó: ${Object.keys(extracted).join(', ')}`);
+      }
+    } catch (e) {
+      console.error('⚠️ Extractor de datos falló (el chat continúa):', (e as Error).message);
+    }
+  }
+
   private async getLeadData(agentId: string, userId: string): Promise<Record<string, unknown> | null> {
     try {
       const { data, error } = await this.databaseService
