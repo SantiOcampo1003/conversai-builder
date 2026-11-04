@@ -75,7 +75,11 @@ export class NotificationsService {
     error?: string | null;
     is_test?: boolean;
   }) {
-    await this.db.getAdminClient().from('notification_log').insert(row);
+    try {
+      await this.db.getAdminClient().from('notification_log').insert(row);
+    } catch (e) {
+      this.logger.error(`No se pudo registrar el aviso en notification_log: ${(e as Error).message}`);
+    }
   }
 
   /**
@@ -86,6 +90,7 @@ export class NotificationsService {
   async notifyIfComplete(agentId: string, customerId: string): Promise<'sent' | 'skipped' | 'failed'> {
     // Los contactos de prueba nunca avisan a nadie
     if (customerId.startsWith('test_')) return 'skipped';
+    let claimedHere = false;
     try {
       const cfg = await this.loadNotification(agentId);
       if (!cfg || !cfg.n.enabled) return 'skipped';
@@ -111,6 +116,7 @@ export class NotificationsService {
         .is('notified_at', null)
         .select('customer_id');
       if (!claimed || claimed.length === 0) return 'skipped';
+      claimedHere = true;
 
       const recipients = pickRecipients(cfg.recipients, cfg.n.route_field, data);
       if (recipients.length === 0) {
@@ -141,6 +147,14 @@ export class NotificationsService {
       return 'sent';
     } catch (e) {
       this.logger.error(`Notificación falló (${agentId}/${customerId}): ${(e as Error).message}`);
+      // Si ya se había marcado como avisado y falló antes de terminar, se libera para que se reintente
+      if (claimedHere) {
+        try {
+          await this.db.getAdminClient().from('leads').update({ notified_at: null }).eq('agent_id', agentId).eq('customer_id', customerId);
+        } catch (e2) {
+          this.logger.error(`No se pudo liberar el aviso (${agentId}/${customerId}): ${(e2 as Error).message}`);
+        }
+      }
       return 'failed';
     }
   }
