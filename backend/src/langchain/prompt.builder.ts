@@ -39,7 +39,7 @@ export function buildLeadState(
 Guardados:
 ${lines.length ? lines.join('\n') : '- (ninguno todavía)'}
 Pendientes: ${pending.length ? pending.join(', ') : 'ninguno'}
-${optional.length ? `Opcionales sin dato (no bloquean el cierre): ${optional.join(', ')}\n` : ''}⚠️ Toma los datos guardados como ciertos y NO los vuelvas a preguntar. Si hay datos pendientes y la persona no se ha negado a darlos, pregunta el siguiente pendiente (una pregunta por mensaje) y NO envíes todavía el mensaje de cierre.
+${optional.length ? `Opcionales sin dato (no bloquean el cierre): ${optional.join(', ')}\n` : ''}⚠️ Toma los datos guardados como ciertos y NO los vuelvas a preguntar. Si hay datos pendientes y la persona no se ha negado a darlos, pídelos, siguiendo las instrucciones de este agente sobre cómo pedir los datos, y NO envíes todavía el mensaje de cierre.
 `;
 }
 
