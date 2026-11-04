@@ -28,7 +28,7 @@ export class ChatService {
     console.log(`💬 Mensaje: "${messageText}"`);
     console.log('='.repeat(60));
 
-    const supabase = this.databaseService.getClient();
+    const supabase = this.databaseService.getAdminClient();
 
     // 1️⃣ Cargar datos del agente
     const { data: agent, error: agentError } = await supabase
@@ -327,7 +327,7 @@ export class ChatService {
       return false;
     }
 
-    const supabase = this.databaseService.getClient();
+    const supabase = this.databaseService.getAdminClient();
 
     const { count } = await supabase
       .from('meta_ads_events')
@@ -440,7 +440,7 @@ export class ChatService {
     userId: string,
     eventName: string,
   ): Promise<void> {
-    const supabase = this.databaseService.getClient();
+    const supabase = this.databaseService.getAdminClient();
 
     const { data: lead } = await supabase
       .from('leads')

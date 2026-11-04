@@ -89,7 +89,7 @@ Campos disponibles: ${requiredInfo.join(', ') || 'todos los campos comunes'}.
     schema,
     func: async (input: Record<string, any>) => {
       try {
-        const supabase = databaseService.getClient();
+        const supabase = databaseService.getAdminClient();
 
         // Check if lead already exists
         const { data: existingLead, error: fetchError } = await supabase
