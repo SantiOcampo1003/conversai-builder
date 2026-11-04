@@ -48,6 +48,12 @@ import { cn } from '@/lib/utils'
 // ── Types ──────────────────────────────────────────────────────────────────
 type LineStatus = 'pending' | 'connected' | 'disconnected' | 'error'
 
+/**
+ * Webhook al que Evolution envía los mensajes de las líneas NUEVAS: flujo v2 de n8n.
+ * Fijo a propósito (antes salía de VITE_EVOLUTION_WEBHOOK_URL, que seguía apuntando al flujo viejo).
+ */
+const WHATSAPP_WEBHOOK_URL = 'https://easy-agents-n8n.ftppdk.easypanel.host/webhook/whatsapp-incoming-generic-v2'
+
 interface WhatsAppLine {
   id: string
   client_id: string
@@ -179,7 +185,8 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
       const instanceName = `line_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       console.log('Creating instance:', instanceName)
 
-      const webhookUrl = import.meta.env.VITE_EVOLUTION_WEBHOOK_URL
+      // Toda línea nueva nace apuntando al flujo v2 (backend LangChain: archivos, datos a recoger, avisos).
+      const webhookUrl = WHATSAPP_WEBHOOK_URL
 
       const requestBody = {
         instanceName,
