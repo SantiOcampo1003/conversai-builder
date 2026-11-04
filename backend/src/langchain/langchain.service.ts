@@ -180,7 +180,7 @@ export class LangchainService {
       const lastMessage = result.messages[result.messages.length - 1];
       const rawText = lastMessage.content as string;
       if (hasLeakedToolText(rawText)) {
-        console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+        console.warn(`⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar. Texto original (200 car.): ${JSON.stringify(rawText.slice(0, 200))}`);
         // Además de ocultarlo, se guarda de verdad lo que quiso guardar (solo claves del agente)
         const leaked = extractLeakedArgs(rawText, dataFields.map((f) => f.key));
         if (customerInfoTool && Object.keys(leaked).length > 0) {
@@ -250,7 +250,7 @@ export class LangchainService {
     );
 
     const rawText = response.content as string;
-    if (hasLeakedToolText(rawText)) console.warn('⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar');
+    if (hasLeakedToolText(rawText)) console.warn(`⚠️ El modelo escribió una llamada a herramienta como texto; se filtra antes de enviar. Texto original (200 car.): ${JSON.stringify(rawText.slice(0, 200))}`);
     const responseText = stripLeakedToolText(rawText);
 
     console.log(`✅ Respuesta generada: ${responseText.substring(0, 50)}...`);
