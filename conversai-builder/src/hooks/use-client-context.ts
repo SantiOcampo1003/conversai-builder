@@ -1,79 +1,64 @@
-import { useState, useEffect } from 'react'
+import { useSyncExternalStore } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
+
+const IMPERSONATION_KEY = 'super_admin_impersonating'
+
+// Cambios de impersonalización: otra pestaña (`storage`) o esta misma (`impersonation-changed`)
+function subscribeImpersonation(onChange: () => void) {
+  window.addEventListener('storage', onChange)
+  window.addEventListener('impersonation-changed', onChange)
+  return () => {
+    window.removeEventListener('storage', onChange)
+    window.removeEventListener('impersonation-changed', onChange)
+  }
+}
+
+const readImpersonation = () => sessionStorage.getItem(IMPERSONATION_KEY)
 
 /**
  * Hook para obtener el client_id correcto considerando impersonalización
  *
  * Si el super admin está impersonalizando, devuelve el client_id del cliente impersonalizado.
  * Si no, devuelve el client_id del usuario actual.
+ *
+ * El resultado se comparte en caché entre todas las secciones: navegar o volver a la pestaña
+ * no lo vuelve a poner en "cargando".
  */
 export function useClientContext() {
   const { user } = useAuth()
-  const [clientId, setClientId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isImpersonating, setIsImpersonating] = useState(false)
+  const impersonationRaw = useSyncExternalStore(subscribeImpersonation, readImpersonation)
 
-  useEffect(() => {
-    if (!user) {
-      setClientId(null)
-      setIsLoading(false)
-      return
-    }
-
-    const loadClientId = async () => {
-      setIsLoading(true)
-
-      // Verificar si estamos impersonalizando
-      const impersonationData = sessionStorage.getItem('super_admin_impersonating')
-
-      if (impersonationData) {
+  const { data, isPending } = useQuery({
+    queryKey: ['client-context', user?.id, impersonationRaw],
+    enabled: !!user,
+    staleTime: Infinity,
+    queryFn: async () => {
+      if (impersonationRaw) {
         try {
-          const { targetClientId } = JSON.parse(impersonationData)
-          setClientId(targetClientId)
-          setIsImpersonating(true)
-          setIsLoading(false)
-          return
+          const { targetClientId } = JSON.parse(impersonationRaw)
+          return { clientId: targetClientId as string, isImpersonating: true }
         } catch (error) {
           console.error('Error parsing impersonation data:', error)
-          sessionStorage.removeItem('super_admin_impersonating')
+          sessionStorage.removeItem(IMPERSONATION_KEY)
         }
       }
 
-      // Si no estamos impersonalizando, obtener el client_id del usuario actual
       const { data: membership } = await supabase
         .from('client_members')
         .select('client_id')
-        .eq('auth_user_id', user.id)
+        .eq('auth_user_id', user!.id)
         .eq('status', 'active')
         .maybeSingle()
 
-      setClientId(membership?.client_id || null)
-      setIsImpersonating(false)
-      setIsLoading(false)
-    }
-
-    loadClientId()
-
-    // Escuchar cambios en sessionStorage (por si se cambia la impersonalización)
-    const handleStorageChange = () => {
-      loadClientId()
-    }
-
-    window.addEventListener('storage', handleStorageChange)
-
-    // También escuchar un evento custom para cambios en la misma pestaña
-    window.addEventListener('impersonation-changed', handleStorageChange)
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      window.removeEventListener('impersonation-changed', handleStorageChange)
-    }
-  }, [user])
+      return { clientId: (membership?.client_id as string | undefined) ?? null, isImpersonating: false }
+    },
+  })
 
   return {
-    clientId,
-    isLoading,
-    isImpersonating,
+    clientId: user ? data?.clientId ?? null : null,
+    isLoading: !!user && isPending,
+    isImpersonating: user ? data?.isImpersonating ?? false : false,
   }
 }

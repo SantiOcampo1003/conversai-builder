@@ -3,7 +3,7 @@
 # Single-stage build for production NestJS application
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Install dependencies for node-gyp (needed for some native modules)
 RUN apk add --no-cache python3 make g++

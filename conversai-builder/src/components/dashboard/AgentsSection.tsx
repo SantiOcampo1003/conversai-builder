@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
@@ -48,40 +48,23 @@ export function AgentsSection() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
   const navigate = useNavigate()
-  const [agents, setAgents] = useState<Agent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // En caché por cliente: al volver a la sección se ve al instante y se refresca en segundo plano
+  const { data: agents = [], isPending: loading, error: queryError } = useQuery({
+    queryKey: ['agents', clientId],
+    enabled: !!user && !!clientId && !loadingClientId,
+    queryFn: async () => {
+      // Traer los agentes del cliente (usando clientId del contexto, que puede ser impersonalizado)
+      const { data: agentsData, error: agentsError } = await supabase
+        .from('agents')
+        .select('id, agent_id, business_name, business_category, business_type, created_at')
+        .eq('client_id', clientId!)
+        .order('created_at', { ascending: false })
 
-  useEffect(() => {
-    if (!user || !clientId || loadingClientId) return
-
-    const fetchAgents = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Traer los agentes del cliente (usando clientId del contexto, que puede ser impersonalizado)
-        const { data: agentsData, error: agentsError } = await supabase
-          .from('agents')
-          .select('id, agent_id, business_name, business_category, business_type, created_at')
-          .eq('client_id', clientId)
-          .order('created_at', { ascending: false })
-
-        if (agentsError) {
-          setError('Error al cargar los agentes')
-          return
-        }
-
-        setAgents(agentsData || [])
-      } catch (err) {
-        setError('Error inesperado al cargar los agentes')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchAgents()
-  }, [user, clientId, loadingClientId])
+      if (agentsError) throw new Error('Error al cargar los agentes')
+      return (agentsData || []) as Agent[]
+    },
+  })
+  const error = queryError ? queryError.message : null
 
   if (loading) {
     return (

@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -179,13 +180,96 @@ function AppearanceTab() {
   )
 }
 
+// ── Carga de datos (en caché con React Query) ──────────────────────────────────
+async function loadTeam(userId: string, clientId: string): Promise<{ members: Member[]; myRole: string }> {
+  // Obtener rol del usuario actual en el cliente (o super_admin si está impersonalizando)
+  const { data: me } = await supabase
+    .from('client_members')
+    .select('role')
+    .eq('auth_user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  // Usar función RPC que obtiene miembros con emails desde auth.users
+  const { data: allMembers } = await supabase.rpc('get_client_members_with_email', {
+    p_client_id: clientId
+  })
+
+  return {
+    // Si es super admin impersonalizando, darle permisos de admin
+    myRole: me?.role === 'super_admin' ? 'admin' : (me?.role || 'viewer'),
+    members: (allMembers as Member[]) || [],
+  }
+}
+
+async function loadPermissions(
+  userId: string,
+  clientId: string,
+): Promise<{ members: Member[]; myRole: string; permissions: Record<string, Record<SectionId, Perm[]>> }> {
+  // Obtener rol del usuario actual (o admin si es super_admin)
+  const { data: me } = await supabase
+    .from('client_members')
+    .select('role')
+    .eq('auth_user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  // Si es super_admin (incluso impersonalizando), darle permisos de admin
+  let effectiveRole = me?.role || 'viewer'
+  if (effectiveRole === 'super_admin') {
+    effectiveRole = 'admin'
+  } else {
+    // Si no es super admin, verificar que sea miembro del cliente actual
+    const { data: membership } = await supabase
+      .from('client_members')
+      .select('role')
+      .eq('client_id', clientId)
+      .eq('auth_user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    effectiveRole = membership?.role || 'viewer'
+  }
+
+  // Usar función RPC para obtener miembros con emails
+  const { data: allMembers } = await supabase.rpc('get_client_members_with_email', {
+    p_client_id: clientId
+  })
+  const memberList = (allMembers as Member[]) || []
+
+  // Cargar permisos de cada miembro
+  const permsMap: Record<string, Record<SectionId, Perm[]>> = {}
+  const memberIds = memberList.map(m => m.id)
+  if (memberIds.length > 0) {
+    const { data: permsData } = await supabase
+      .from('member_permissions')
+      .select('member_id, section, permissions')
+      .in('member_id', memberIds)
+
+    for (const member of memberList) {
+      permsMap[member.id] = {} as Record<SectionId, Perm[]>
+      for (const section of SECTIONS) {
+        const found = permsData?.find(p => p.member_id === member.id && p.section === section.id)
+        permsMap[member.id][section.id] = (found?.permissions as Perm[]) || []
+      }
+    }
+  }
+
+  return { members: memberList, myRole: effectiveRole, permissions: permsMap }
+}
+
 // ── Tab: Equipo ────────────────────────────────────────────────────────────────
 function TeamTab() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
-  const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(true)
-  const [myRole, setMyRole] = useState<string>('')
+  // En caché por cliente: al volver a la sección se ve al instante y se refresca en segundo plano
+  const { data: teamData, isPending: loading } = useQuery({
+    queryKey: ['account-team', clientId, user?.id],
+    enabled: !!user && !!clientId && !loadingClientId,
+    queryFn: () => loadTeam(user!.id, clientId!),
+  })
+  const [members, setMembers] = useState<Member[]>(teamData?.members ?? [])
+  const [myRole, setMyRole] = useState<string>(teamData?.myRole ?? '')
 
   // Invite form
   const [inviteEmail, setInviteEmail] = useState('')
@@ -200,31 +284,10 @@ function TeamTab() {
   const [resending, setResending] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user || !clientId || loadingClientId) return
-    const load = async () => {
-      setLoading(true)
-
-      // Obtener rol del usuario actual en el cliente (o super_admin si está impersonalizando)
-      const { data: me } = await supabase
-        .from('client_members')
-        .select('role')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle()
-
-      // Si es super admin impersonalizando, darle permisos de admin
-      setMyRole(me?.role === 'super_admin' ? 'admin' : (me?.role || 'viewer'))
-
-      // Usar función RPC que obtiene miembros con emails desde auth.users
-      const { data: allMembers } = await supabase.rpc('get_client_members_with_email', {
-        p_client_id: clientId
-      })
-
-      setMembers((allMembers as Member[]) || [])
-      setLoading(false)
-    }
-    load()
-  }, [user, clientId, loadingClientId])
+    if (!teamData) return
+    setMembers(teamData.members)
+    setMyRole(teamData.myRole)
+  }, [teamData])
 
   const isAdmin = myRole === 'admin'
 
@@ -594,79 +657,27 @@ function TeamTab() {
 function PermissionsTab() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
-  const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(true)
-  const [myRole, setMyRole] = useState('')
+  // En caché por cliente: al volver a la sección se ve al instante y se refresca en segundo plano
+  const { data: permsData, isPending: loading } = useQuery({
+    queryKey: ['account-permissions', clientId, user?.id],
+    enabled: !!user && !!clientId && !loadingClientId,
+    queryFn: () => loadPermissions(user!.id, clientId!),
+    // Los permisos se editan en local y se guardan con botón: no pisar cambios sin guardar al volver a la pestaña
+    refetchOnWindowFocus: false,
+  })
+  const [members, setMembers] = useState<Member[]>(permsData?.members ?? [])
+  const [myRole, setMyRole] = useState(permsData?.myRole ?? '')
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
-  const [permissions, setPermissions] = useState<Record<string, Record<SectionId, Perm[]>>>({})
+  const [permissions, setPermissions] = useState<Record<string, Record<SectionId, Perm[]>>>(permsData?.permissions ?? {})
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user || !clientId || loadingClientId) return
-    const load = async () => {
-      setLoading(true)
-
-      // Obtener rol del usuario actual (o admin si es super_admin)
-      const { data: me } = await supabase
-        .from('client_members')
-        .select('role')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle()
-
-      // Si es super_admin (incluso impersonalizando), darle permisos de admin
-      const isSuperAdmin = me?.role === 'super_admin'
-
-      // Para super admin impersonalizando, verificar si hay membresía en el cliente actual
-      let effectiveRole = me?.role || 'viewer'
-      if (isSuperAdmin || effectiveRole === 'super_admin') {
-        effectiveRole = 'admin'
-      } else {
-        // Si no es super admin, verificar que sea miembro del cliente actual
-        const { data: membership } = await supabase
-          .from('client_members')
-          .select('role')
-          .eq('client_id', clientId)
-          .eq('auth_user_id', user.id)
-          .eq('status', 'active')
-          .maybeSingle()
-
-        effectiveRole = membership?.role || 'viewer'
-      }
-
-      setMyRole(effectiveRole)
-
-      // Usar función RPC para obtener miembros con emails
-      const { data: allMembers } = await supabase.rpc('get_client_members_with_email', {
-        p_client_id: clientId
-      })
-
-      const memberList = (allMembers as Member[]) || []
-      setMembers(memberList)
-
-      // Cargar permisos de cada miembro
-      const memberIds = memberList.map(m => m.id)
-      if (memberIds.length > 0) {
-        const { data: permsData } = await supabase
-          .from('member_permissions')
-          .select('member_id, section, permissions')
-          .in('member_id', memberIds)
-
-        const permsMap: Record<string, Record<SectionId, Perm[]>> = {}
-        for (const member of memberList) {
-          permsMap[member.id] = {} as Record<SectionId, Perm[]>
-          for (const section of SECTIONS) {
-            const found = permsData?.find(p => p.member_id === member.id && p.section === section.id)
-            permsMap[member.id][section.id] = (found?.permissions as Perm[]) || []
-          }
-        }
-        setPermissions(permsMap)
-      }
-      setLoading(false)
-    }
-    load()
-  }, [user, clientId, loadingClientId])
+    if (!permsData) return
+    setMembers(permsData.members)
+    setMyRole(permsData.myRole)
+    setPermissions(permsData.permissions)
+  }, [permsData])
 
   const isAdmin = myRole === 'admin'
 

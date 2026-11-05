@@ -45,6 +45,19 @@ const NAV_ITEMS = [
 
 type SectionId = typeof NAV_ITEMS[number]['id'] | 'super-admin'
 
+// Categoría con la que se abre el formulario de feedback según la sección activa
+function feedbackCategoryFor(section: SectionId) {
+  switch (section) {
+    case 'agents': return 'agents'
+    case 'wa-interactions':
+    case 'wa-connections': return 'whatsapp'
+    case 'overview':
+    case 'usage': return 'dashboard'
+    case 'tokens': return 'tokens'
+    default: return 'general'
+  }
+}
+
 // ── Placeholder de cada sección ────────────────────────────────────────────
 function SectionPlaceholder({ id, label, icon: Icon }: { id: SectionId; label: string; icon: React.ElementType }) {
   return (
@@ -77,22 +90,6 @@ export default function Dashboard() {
   const [allowedSections, setAllowedSections] = useState<Set<string> | null>(null) // null = loading
   const [availableTokens, setAvailableTokens] = useState<number | null>(null)
   const [clientName, setClientName] = useState<string | null>(null)
-  const [feedbackExpanded, setFeedbackExpanded] = useState(true)
-  const [feedbackHover, setFeedbackHover] = useState(false)
-  const [feedbackPosition, setFeedbackPosition] = useState(() => {
-    // Cargar posición guardada desde localStorage
-    const saved = localStorage.getItem('feedback-position')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch {
-        return { bottom: 54, right: 24 }
-      }
-    }
-    return { bottom: 54, right: 24 }
-  })
-  const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const { isSuperAdmin, isLoading: loadingSuperAdmin } = useIsSuperAdmin()
   const { clientId, isLoading: loadingClientId } = useClientContext()
   const [isImpersonating, setIsImpersonating] = useState(false)
@@ -101,44 +98,6 @@ export default function Dashboard() {
 
   // Determinar la sección activa desde la URL
   const activeSection = (section || 'overview') as SectionId
-
-  // Handle dragging with global mouse events
-  useEffect(() => {
-    if (!isDragging) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      e.preventDefault()
-
-      // Calcular solo el movimiento vertical (Y)
-      const deltaY = dragStart.y - e.clientY // Invertido porque bottom crece hacia arriba
-
-      setFeedbackPosition(prev => {
-        const newPosition = {
-          bottom: Math.max(54, Math.min(window.innerHeight - 100, prev.bottom + deltaY)),
-          right: prev.right, // Mantener right fijo (no mover horizontalmente)
-        }
-
-        // Guardar en localStorage
-        localStorage.setItem('feedback-position', JSON.stringify(newPosition))
-
-        return newPosition
-      })
-
-      setDragStart({ x: e.clientX, y: e.clientY })
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isDragging, dragStart])
 
   // Detectar si estamos impersonalizando
   useEffect(() => {
@@ -307,28 +266,6 @@ export default function Dashboard() {
     }
   }, [activeSection, allowedSections, isSuperAdmin, navigate])
 
-  // Animar botón de feedback al cargar y cada minuto
-  useEffect(() => {
-    // Expandir inicialmente
-    setFeedbackExpanded(true)
-    const collapseTimer = setTimeout(() => {
-      setFeedbackExpanded(false)
-    }, 3000)
-
-    // Expandir cada minuto
-    const expandInterval = setInterval(() => {
-      setFeedbackExpanded(true)
-      setTimeout(() => {
-        setFeedbackExpanded(false)
-      }, 3000)
-    }, 60000) // Cada 60 segundos
-
-    return () => {
-      clearTimeout(collapseTimer)
-      clearInterval(expandInterval)
-    }
-  }, []) // Solo al montar el componente
-
   const handleExitImpersonation = () => {
     sessionStorage.removeItem('super_admin_impersonating')
     // Disparar evento para que otros componentes se enteren
@@ -412,8 +349,27 @@ export default function Dashboard() {
           ))}
         </nav>
 
-        {/* Sign out */}
-        <div className="border-t border-border p-2">
+        {/* Feedback + Sign out */}
+        <div className="border-t border-border p-2 flex flex-col gap-1">
+          <FeedbackDialog
+            trigger={
+              <button
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-all w-full',
+                  collapsed && 'justify-center px-0'
+                )}
+                title={collapsed ? 'Enviar feedback' : undefined}
+              >
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                {!collapsed && <span>Enviar feedback</span>}
+              </button>
+            }
+            defaultCategory={feedbackCategoryFor(activeSection)}
+            metadata={{
+              section: activeSection,
+              userRole: userRole,
+            }}
+          />
           <button
             onClick={handleSignOut}
             className={cn(
@@ -527,74 +483,6 @@ export default function Dashboard() {
             />
           )}
         </main>
-
-        {/* Floating Feedback Button - Draggable */}
-        <div
-          className="fixed z-50 select-none"
-          style={{
-            bottom: `${feedbackPosition.bottom}px`,
-            right: `${feedbackPosition.right}px`,
-            cursor: isDragging ? 'grabbing' : 'grab',
-          }}
-          onMouseEnter={() => !isDragging && setFeedbackHover(true)}
-          onMouseLeave={() => !isDragging && setFeedbackHover(false)}
-          onMouseDown={(e) => {
-            if (e.button !== 0) return // Solo click izquierdo
-            e.preventDefault()
-            setIsDragging(true)
-            setDragStart({
-              x: e.clientX,
-              y: e.clientY,
-            })
-          }}
-        >
-          <div
-            className="w-[152px] h-14 flex items-center justify-end"
-            onClick={(e) => {
-              if (isDragging) {
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }}
-          >
-            <FeedbackDialog
-              trigger={
-                <Button
-                  size="lg"
-                  className={cn(
-                    "rounded-full shadow-2xl shadow-primary/30 h-14 bg-gradient-to-br from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-300 flex items-center pointer-events-auto",
-                    (feedbackExpanded || feedbackHover) && !isDragging ? "px-6 gap-2 justify-start hover:scale-105" : "w-14 px-0 justify-center"
-                  )}
-                  disabled={isDragging}
-                >
-                  <MessageSquare className={cn("h-5 w-5 shrink-0", !(feedbackExpanded || feedbackHover) && "mx-auto")} />
-                  <span
-                    className={cn(
-                      "font-semibold whitespace-nowrap overflow-hidden transition-all duration-300",
-                      (feedbackExpanded || feedbackHover) ? "max-w-[100px] opacity-100" : "max-w-0 opacity-0"
-                    )}
-                  >
-                    Feedback
-                  </span>
-                </Button>
-              }
-              defaultCategory={
-                activeSection === 'overview' ? 'dashboard' :
-                activeSection === 'agents' ? 'agents' :
-                activeSection === 'wa-interactions' ? 'whatsapp' :
-                activeSection === 'wa-connections' ? 'whatsapp' :
-                activeSection === 'usage' ? 'dashboard' :
-                activeSection === 'tokens' ? 'tokens' :
-                activeSection === 'account' ? 'general' :
-                'general'
-              }
-              metadata={{
-                section: activeSection,
-                userRole: userRole,
-              }}
-            />
-          </div>
-        </div>
       </div>
     </div>
   )

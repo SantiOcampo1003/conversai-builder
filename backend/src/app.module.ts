@@ -8,6 +8,7 @@ import { LangchainModule } from './langchain/langchain.module';
 import { EmailModule } from './email/email.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { WhatsAppLinesModule } from './whatsapp-lines/whatsapp-lines.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     EmailModule,
     IntegrationsModule,
     NotificationsModule,
+    WhatsAppLinesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

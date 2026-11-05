@@ -1,7 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/hooks/use-toast'
+import {
+  createLine,
+  deleteLine,
+  listLines,
+  logoutLine,
+  reconnectLine,
+  refreshLine,
+  type LineStatus,
+  type WhatsAppLine,
+} from '@/lib/whatsapp-lines'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Plus,
@@ -46,29 +57,6 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type LineStatus = 'pending' | 'connected' | 'disconnected' | 'error'
-
-/**
- * Webhook al que Evolution envía los mensajes de las líneas NUEVAS: flujo v2 de n8n.
- * Fijo a propósito (antes salía de VITE_EVOLUTION_WEBHOOK_URL, que seguía apuntando al flujo viejo).
- */
-const WHATSAPP_WEBHOOK_URL = 'https://easy-agents-n8n.ftppdk.easypanel.host/webhook/whatsapp-incoming-generic-v2'
-
-interface WhatsAppLine {
-  id: string
-  client_id: string
-  line_name: string
-  phone_number: string | null
-  agent_id: string | null
-  status: LineStatus
-  evolution_instance_name: string
-  qr_code: string | null
-  last_connected_at: string | null
-  error_message: string | null
-  created_at: string
-  updated_at: string
-}
-
 interface Agent {
   agent_id: string
   business_name: string
@@ -155,8 +143,16 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
   const [lineName, setLineName] = useState('')
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
-  const [newLineId, setNewLineId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Polling encadenado: la siguiente consulta sale cuando terminó la anterior, sin acumular peticiones
+  const pollRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; until: number }>({ timer: null, until: 0 })
+
+  const stopPolling = () => {
+    if (pollRef.current.timer) clearTimeout(pollRef.current.timer)
+    pollRef.current = { timer: null, until: 0 }
+  }
+
+  useEffect(() => stopPolling, [])
 
   const handleCreate = async () => {
     if (!lineName.trim()) {
@@ -168,250 +164,56 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
     setError(null)
 
     try {
-      // 1. Crear instancia en Evolution API
-      const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-      const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
+      // El backend crea la instancia en Evolution y la fila en la base
+      const line = await createLine(clientId, lineName.trim())
+      setQrCode(line.qr_code)
+      onLineAdded()
 
-      console.log('Evolution API URL:', evolutionUrl)
-      console.log('Evolution API Key exists:', !!evolutionKey)
-
-      if (!evolutionUrl || !evolutionKey) {
-        const errMsg = 'Evolution API no está configurada. Verifica las variables de entorno VITE_EVOLUTION_API_URL y VITE_EVOLUTION_API_KEY'
-        console.error(errMsg)
-        throw new Error(errMsg)
-      }
-
-      // Generar nombre de instancia único
-      const instanceName = `line_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      console.log('Creating instance:', instanceName)
-
-      // Toda línea nueva nace apuntando al flujo v2 (backend LangChain: archivos, datos a recoger, avisos).
-      const webhookUrl = WHATSAPP_WEBHOOK_URL
-
-      const requestBody = {
-        instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-        ...(webhookUrl && {
-          webhook: {
-            enabled: true,
-            url: webhookUrl,
-            byEvents: false,
-            base64: true,
-            events: ['MESSAGES_UPSERT'],
-          }
-        })
-      }
-      console.log('Request body:', requestBody)
-
-      const response = await fetch(`${evolutionUrl}/instance/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': evolutionKey,
-        },
-        body: JSON.stringify(requestBody),
-      })
-
-      console.log('Response status:', response.status, response.statusText)
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        const errorMsg = data?.response?.message?.[0] || data?.message || 'Error al crear instancia en Evolution API'
-        throw new Error(errorMsg)
-      }
-
-      console.log('Evolution API response:', data)
-
-      // Extraer QR code - puede venir en diferentes formatos
-      let qrCodeData = null
-
-      // Primero intentar obtener imagen base64
-      if (data.qrcode?.base64) {
-        qrCodeData = data.qrcode.base64.startsWith('data:')
-          ? data.qrcode.base64
-          : `data:image/png;base64,${data.qrcode.base64}`
-      } else if (data.base64) {
-        qrCodeData = data.base64.startsWith('data:')
-          ? data.base64
-          : `data:image/png;base64,${data.base64}`
-      } else if (data.qrcode?.pairingCode) {
-        // Si solo hay pairing code, usarlo (más corto que el code completo)
-        qrCodeData = data.qrcode.pairingCode
-      } else if (data.pairingCode) {
-        qrCodeData = data.pairingCode
-      } else if (data.qrcode?.code) {
-        qrCodeData = data.qrcode.code
-      } else if (data.qr) {
-        qrCodeData = data.qr
-      } else if (data.code) {
-        qrCodeData = data.code
-      }
-
-      console.log('QR Code extracted:', qrCodeData ? 'Found' : 'Not found', 'Length:', qrCodeData?.length, 'Type:', qrCodeData?.startsWith('data:') ? 'image' : 'text')
-
-      // Si no hay QR en la respuesta, intentar obtenerlo con connect
-      if (!qrCodeData) {
-        console.log('QR not found in create response, fetching with connect...')
-        try {
-          const connectResponse = await fetch(`${evolutionUrl}/instance/connect/${instanceName}`, {
-            method: 'GET',
-            headers: { apikey: evolutionKey },
-          })
-
-          if (connectResponse.ok) {
-            const connectData = await connectResponse.json()
-            console.log('Connect response:', connectData)
-
-            // Primero intentar obtener imagen base64
-            if (connectData.qrcode?.base64) {
-              qrCodeData = connectData.qrcode.base64.startsWith('data:')
-                ? connectData.qrcode.base64
-                : `data:image/png;base64,${connectData.qrcode.base64}`
-            } else if (connectData.base64) {
-              qrCodeData = connectData.base64.startsWith('data:')
-                ? connectData.base64
-                : `data:image/png;base64,${connectData.base64}`
-            } else if (connectData.qrcode?.pairingCode) {
-              qrCodeData = connectData.qrcode.pairingCode
-            } else if (connectData.pairingCode) {
-              qrCodeData = connectData.pairingCode
-            } else if (connectData.qrcode?.code) {
-              qrCodeData = connectData.qrcode.code
-            } else if (connectData.code) {
-              qrCodeData = connectData.code
-            }
-
-            console.log('QR Code from connect:', qrCodeData ? 'Found' : 'Still not found', 'Type:', qrCodeData?.startsWith('data:') ? 'image' : 'text')
-          }
-        } catch (connectErr) {
-          console.error('Error fetching QR with connect:', connectErr)
-        }
-      }
-
-      // 2. Crear registro en DB
-      const { data: line, error: dbError } = await supabase
-        .from('whatsapp_lines')
-        .insert({
-          client_id: clientId,
-          line_name: lineName.trim(),
-          evolution_instance_name: instanceName,
-          status: 'pending',
-          qr_code: qrCodeData,
-        })
-        .select()
-        .single()
-
-      if (dbError) throw dbError
-
-      setNewLineId(line.id)
-      setQrCode(qrCodeData)
-
-      // Iniciar polling del estado
-      if (qrCodeData) {
-        startPolling(line.id, instanceName)
+      if (line.qr_code) {
+        startPolling(line.id)
       } else {
-        console.warn('No QR code found, cannot start polling')
         setError('No se pudo generar el código QR. Intenta reconectar la línea.')
       }
-
-      onLineAdded()
-    } catch (err: any) {
-      console.error('Error creating line:', err)
-      setError(err.message || 'Error al crear la línea')
+    } catch (err) {
+      setError((err as Error).message || 'Error al crear la línea')
     } finally {
       setLoading(false)
     }
   }
 
-  const startPolling = (lineId: string, instanceName: string) => {
-    const interval = setInterval(async () => {
+  // Evolution renueva el QR cada ~45 s: en cada vuelta se pinta el vigente hasta que conecte
+  const startPolling = (lineId: string) => {
+    stopPolling()
+    // Tope de 3 minutos; la tarjeta de la línea sigue mostrando el QR después
+    pollRef.current.until = Date.now() + 180000
+
+    const tick = async () => {
       try {
-        const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-        const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
-
-        const response = await fetch(
-          `${evolutionUrl}/instance/connectionState/${instanceName}`,
-          {
-            headers: { apikey: evolutionKey },
-          }
-        )
-
-        if (!response.ok) {
-          console.warn('Failed to fetch connection state:', response.status)
+        const line = await refreshLine(lineId)
+        if (line.status === 'connected') {
+          handleClose()
+          onLineAdded()
           return
         }
-
-        const data = await response.json()
-        console.log('Connection state:', data)
-
-        // La respuesta viene en formato: {"instance":{"state":"open"}}
-        const state = data.instance?.state || data.state
-        const isConnected = state === 'open'
-
-        if (isConnected) {
-          // Conectado exitosamente
-          await supabase
-            .from('whatsapp_lines')
-            .update({
-              status: 'connected',
-              last_connected_at: new Date().toISOString(),
-              qr_code: null, // Limpiar QR
-            })
-            .eq('id', lineId)
-
-          clearInterval(interval)
-          setQrCode(null)
-          onLineAdded()
-
-          // Obtener número de teléfono
-          const phoneResponse = await fetch(
-            `${evolutionUrl}/instance/fetchInstances?instanceName=${instanceName}`,
-            {
-              headers: { apikey: evolutionKey },
-            }
-          )
-
-          if (phoneResponse.ok) {
-            const phoneData = await phoneResponse.json()
-
-            // Extraer número de ownerJid (formato: "573142428602@s.whatsapp.net")
-            const ownerJid = phoneData[0]?.ownerJid || null
-
-            if (ownerJid) {
-              // Limpiar el formato de WhatsApp (@s.whatsapp.net)
-              const phone = ownerJid.split('@')[0]
-
-              await supabase
-                .from('whatsapp_lines')
-                .update({ phone_number: phone })
-                .eq('id', lineId)
-            }
-          }
-        }
+        if (line.qr_code) setQrCode(line.qr_code)
       } catch (err) {
         console.error('Polling error:', err)
       }
-    }, 5000) // Poll cada 5 segundos (menos frecuente para evitar sobrecarga)
-
-    // Timeout después de 3 minutos
-    setTimeout(() => {
-      clearInterval(interval)
-      console.log('Polling timeout reached for', instanceName)
-    }, 180000)
+      if (pollRef.current.until > Date.now()) pollRef.current.timer = setTimeout(tick, 5000)
+    }
+    pollRef.current.timer = setTimeout(tick, 5000)
   }
 
   const handleClose = () => {
+    stopPolling()
     setOpen(false)
     setLineName('')
     setQrCode(null)
-    setNewLineId(null)
     setError(null)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : handleClose())}>
       <DialogTrigger asChild>
         <Button disabled={!canAddMore}>
           <Plus className="h-4 w-4 mr-2" />
@@ -519,13 +321,24 @@ export function WAConnectionsSection() {
   const [maxLines, setMaxLines] = useState(3)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  // Cliente que se está mostrando: una respuesta de otro cliente (cambio de impersonalización) se descarta
+  const shownClientRef = useRef(clientId)
+  useEffect(() => {
+    if (shownClientRef.current === clientId) return
+    shownClientRef.current = clientId
+    setLines([])
+    setLoading(true)
+  }, [clientId])
 
   const loadData = useCallback(async () => {
     if (!user || !clientId || loadingClientId) return
+    const isStale = () => shownClientRef.current !== clientId
 
+    // Sin setLoading(true): el skeleton es solo para la primera carga; recargar es silencioso
     try {
-      setLoading(true)
-
       // Obtener rol del usuario (o admin si es super_admin impersonalizando)
       const { data: membership } = await supabase
         .from('client_members')
@@ -534,6 +347,7 @@ export function WAConnectionsSection() {
         .eq('status', 'active')
         .maybeSingle()
 
+      if (isStale()) return
       setIsAdmin(membership?.role === 'super_admin' || membership?.role === 'admin')
 
       // Obtener límite de líneas usando clientId del hook
@@ -543,18 +357,29 @@ export function WAConnectionsSection() {
         .eq('id', clientId)
         .single()
 
+      if (isStale()) return
       if (clientData) {
         setMaxLines(clientData.max_whatsapp_lines)
       }
 
-      // Obtener líneas usando clientId del hook
-      const { data: linesData } = await supabase
-        .from('whatsapp_lines')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-
-      setLines(linesData || [])
+      // Líneas con el estado real de WhatsApp (el backend consulta Evolution)
+      try {
+        const { lines: synced, syncError: warning } = await listLines(clientId)
+        if (isStale()) return
+        setLines([...synced].reverse())
+        setSyncError(warning)
+      } catch (err) {
+        // Si el backend no responde, mostrar lo guardado para no dejar el panel vacío
+        const { data: linesData } = await supabase
+          .from('whatsapp_lines')
+          .select('*')
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+        if (isStale()) return
+        setLines((linesData as WhatsAppLine[]) || [])
+        setSyncError('No se pudo consultar el estado de WhatsApp; se muestra el último estado guardado.')
+        console.error('Error syncing lines:', err)
+      }
 
       // Obtener agentes usando clientId del hook
       const { data: agentsData } = await supabase
@@ -563,11 +388,12 @@ export function WAConnectionsSection() {
         .eq('client_id', clientId)
         .order('business_name')
 
+      if (isStale()) return
       setAgents(agentsData || [])
+      setLoading(false)
     } catch (err) {
       console.error('Error loading data:', err)
-    } finally {
-      setLoading(false)
+      if (!isStale()) setLoading(false)
     }
   }, [user, clientId, loadingClientId])
 
@@ -575,134 +401,36 @@ export function WAConnectionsSection() {
     loadData()
   }, [loadData])
 
-  // Polling automático para líneas pendientes
+  const replaceLine = (updated: WhatsAppLine) =>
+    setLines((prev) => prev.map((line) => (line.id === updated.id ? updated : line)))
+
+  // Líneas esperando escaneo: cada 5 s (después de terminar la consulta anterior) se pide su estado
+  // y el QR vigente, sin recargar la vista
+  const pendingIds = lines.filter((line) => line.status === 'pending').map((line) => line.id).join(',')
   useEffect(() => {
-    const activePolls = new Map<string, NodeJS.Timeout>()
-
-    const startPollingForLine = (line: WhatsAppLine) => {
-      // No iniciar si ya existe un polling para esta línea
-      if (activePolls.has(line.id)) {
-        return
-      }
-
-      console.log('🔄 Starting auto-polling for pending line:', line.line_name, line.evolution_instance_name)
-
-      const interval = setInterval(async () => {
-        try {
-          const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-          const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
-
-          const response = await fetch(
-            `${evolutionUrl}/instance/connectionState/${line.evolution_instance_name}`,
-            {
-              headers: { apikey: evolutionKey },
-            }
-          )
-
-          if (!response.ok) {
-            console.warn('⚠️ Failed to fetch connection state for', line.line_name, ':', response.status)
-            return
-          }
-
-          const data = await response.json()
-          console.log('📡 Auto-polling connection state for', line.line_name, ':', data)
-
-          // La respuesta viene en formato: {"instance":{"state":"open"}}
-          const state = data.instance?.state || data.state
-          const isConnected = state === 'open'
-
-          if (isConnected) {
-            console.log('✅ Line connected!', line.line_name)
-
-            // Detener polling para esta línea
-            const poll = activePolls.get(line.id)
-            if (poll) {
-              clearInterval(poll)
-              activePolls.delete(line.id)
-            }
-
-            // Actualizar en DB
-            const { error: updateError } = await supabase
-              .from('whatsapp_lines')
-              .update({
-                status: 'connected',
-                last_connected_at: new Date().toISOString(),
-                qr_code: null,
-              })
-              .eq('id', line.id)
-
-            if (updateError) {
-              console.error('❌ Error updating line status:', updateError)
-              return
-            }
-
-            console.log('✅ Database updated successfully for', line.line_name)
-
-            // Obtener número de teléfono
-            try {
-              const phoneResponse = await fetch(
-                `${evolutionUrl}/instance/fetchInstances?instanceName=${line.evolution_instance_name}`,
-                {
-                  headers: { apikey: evolutionKey },
-                }
-              )
-
-              if (phoneResponse.ok) {
-                const phoneData = await phoneResponse.json()
-                console.log('📱 Phone data:', phoneData)
-
-                // Extraer número de ownerJid (formato: "573142428602@s.whatsapp.net")
-                const ownerJid = phoneData[0]?.ownerJid || null
-                let phone = null
-
-                if (ownerJid) {
-                  // Limpiar el formato de WhatsApp (@s.whatsapp.net)
-                  phone = ownerJid.split('@')[0]
-                  console.log('📞 Extracted phone number:', phone)
-
-                  await supabase
-                    .from('whatsapp_lines')
-                    .update({ phone_number: phone })
-                    .eq('id', line.id)
-                }
-              }
-            } catch (phoneErr) {
-              console.error('❌ Error fetching phone:', phoneErr)
-            }
-
-            // Recargar datos completos desde la DB
-            console.log('🔄 Reloading data from database...')
-            loadData()
-          }
-        } catch (err) {
-          console.error('❌ Auto-polling error for', line.line_name, ':', err)
-        }
-      }, 5000) // Poll cada 5 segundos
-
-      activePolls.set(line.id, interval)
+    if (!pendingIds) return
+    const ids = pendingIds.split(',')
+    let timer: ReturnType<typeof setTimeout>
+    let active = true
+    const tick = async () => {
+      await Promise.all(
+        ids.map((id) =>
+          refreshLine(id)
+            .then((line) => active && setLines((prev) => prev.map((l) => (l.id === line.id ? line : l))))
+            .catch((err) => console.error('Polling error:', err)),
+        ),
+      )
+      if (active) timer = setTimeout(tick, 5000)
     }
-
-    // Iniciar polling solo para líneas pendientes
-    lines.forEach((line) => {
-      if (line.status === 'pending') {
-        startPollingForLine(line)
-      } else {
-        // Si la línea ya no está pendiente, detener su polling si existe
-        const poll = activePolls.get(line.id)
-        if (poll) {
-          clearInterval(poll)
-          activePolls.delete(line.id)
-        }
-      }
-    })
-
-    // Cleanup: detener todos los intervals al desmontar
+    timer = setTimeout(tick, 5000)
     return () => {
-      console.log('🛑 Stopping all auto-polling intervals')
-      activePolls.forEach((interval) => clearInterval(interval))
-      activePolls.clear()
+      active = false
+      clearTimeout(timer)
     }
-  }, [lines, loadData])
+  }, [pendingIds])
+
+  const showError = (title: string, err: unknown) =>
+    toast({ title, description: (err as Error)?.message, variant: 'destructive' })
 
   const handleAssignAgent = async (lineId: string, agentId: string | null) => {
     try {
@@ -724,140 +452,36 @@ export function WAConnectionsSection() {
     }
   }
 
-  const handleDeleteLine = async (lineId: string, instanceName: string) => {
+  const handleDeleteLine = async (lineId: string) => {
     try {
-      // 1. Eliminar instancia de Evolution API
-      const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-      const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
-
-      if (evolutionUrl && evolutionKey) {
-        await fetch(`${evolutionUrl}/instance/delete/${instanceName}`, {
-          method: 'DELETE',
-          headers: { apikey: evolutionKey },
-        })
-      }
-
-      // 2. Eliminar de DB
-      const { error } = await supabase
-        .from('whatsapp_lines')
-        .delete()
-        .eq('id', lineId)
-
-      if (error) throw error
-
-      // Actualizar lista
+      await deleteLine(lineId)
       setLines((prev) => prev.filter((line) => line.id !== lineId))
     } catch (err) {
-      console.error('Error deleting line:', err)
+      showError('No se pudo eliminar la línea', err)
     }
   }
 
-  const handleLogout = async (lineId: string, instanceName: string) => {
+  const handleLogout = async (lineId: string) => {
     try {
-      console.log('Logging out instance:', instanceName)
-
-      const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-      const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
-
-      if (!evolutionUrl || !evolutionKey) {
-        throw new Error('Evolution API no está configurada')
-      }
-
-      // Hacer logout en Evolution API
-      const response = await fetch(`${evolutionUrl}/instance/logout/${instanceName}`, {
-        method: 'DELETE',
-        headers: { apikey: evolutionKey },
-      })
-
-      if (!response.ok) {
-        console.error('Logout failed:', response.status, response.statusText)
-        throw new Error('Error al desconectar')
-      }
-
-      console.log('✅ Logged out successfully')
-
-      // Actualizar estado en DB a disconnected
-      await supabase
-        .from('whatsapp_lines')
-        .update({
-          status: 'disconnected',
-          phone_number: null,
-          qr_code: null,
-        })
-        .eq('id', lineId)
-
-      loadData()
+      replaceLine(await logoutLine(lineId))
     } catch (err) {
-      console.error('Error logging out:', err)
-      alert('Error al desconectar. Revisa la consola para más detalles.')
+      showError('No se pudo desconectar la línea', err)
     }
   }
 
-  const handleReconnect = async (lineId: string, instanceName: string) => {
+  const handleReconnect = async (lineId: string) => {
     try {
-      console.log('Reconnecting instance:', instanceName)
-
-      // Solicitar nuevo QR
-      const evolutionUrl = import.meta.env.VITE_EVOLUTION_API_URL
-      const evolutionKey = import.meta.env.VITE_EVOLUTION_API_KEY
-
-      if (!evolutionUrl || !evolutionKey) {
-        throw new Error('Evolution API no está configurada')
-      }
-
-      const response = await fetch(`${evolutionUrl}/instance/connect/${instanceName}`, {
-        method: 'GET',
-        headers: { apikey: evolutionKey },
-      })
-
-      if (!response.ok) {
-        console.error('Reconnect failed:', response.status, response.statusText)
-        throw new Error('Error al reconectar')
-      }
-
-      const data = await response.json()
-      console.log('Reconnect response:', data)
-
-      // Extraer QR code - puede venir en diferentes formatos
-      let qrCodeData = null
-
-      // Primero intentar obtener imagen base64
-      if (data.qrcode?.base64) {
-        qrCodeData = data.qrcode.base64.startsWith('data:')
-          ? data.qrcode.base64
-          : `data:image/png;base64,${data.qrcode.base64}`
-      } else if (data.base64) {
-        qrCodeData = data.base64.startsWith('data:')
-          ? data.base64
-          : `data:image/png;base64,${data.base64}`
-      } else if (data.qrcode?.pairingCode) {
-        // Si solo hay pairing code, usarlo (más corto que el code completo)
-        qrCodeData = data.qrcode.pairingCode
-      } else if (data.pairingCode) {
-        qrCodeData = data.pairingCode
-      } else if (data.qrcode?.code) {
-        qrCodeData = data.qrcode.code
-      } else if (data.qr) {
-        qrCodeData = data.qr
-      } else if (data.code) {
-        qrCodeData = data.code
-      }
-
-      console.log('New QR Code extracted:', qrCodeData ? 'Found' : 'Not found', 'Length:', qrCodeData?.length, 'Type:', qrCodeData?.startsWith('data:') ? 'image' : 'text')
-
-      // Actualizar QR en DB
-      await supabase
-        .from('whatsapp_lines')
-        .update({
-          qr_code: qrCodeData,
-          status: 'pending',
-        })
-        .eq('id', lineId)
-
-      loadData()
+      replaceLine(await reconnectLine(lineId))
     } catch (err) {
-      console.error('Error reconnecting:', err)
-      alert('Error al renovar el QR. Revisa la consola para más detalles.')
+      showError('No se pudo generar un QR nuevo', err)
+    }
+  }
+
+  const handleVerify = async (lineId: string) => {
+    try {
+      replaceLine(await refreshLine(lineId))
+    } catch (err) {
+      showError('No se pudo consultar la línea', err)
     }
   }
 
@@ -960,6 +584,12 @@ export function WAConnectionsSection() {
         </div>
       </div>
 
+      {syncError && (
+        <div className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+          {syncError}
+        </div>
+      )}
+
       {/* Lines list */}
       {lines.length === 0 ? (
         <div className="border-2 border-dashed border-border rounded-2xl p-16 flex flex-col items-center justify-center gap-4">
@@ -984,16 +614,6 @@ export function WAConnectionsSection() {
         <div className="grid gap-4">
           {lines.map((line) => {
             const assignedAgent = agents.find((a) => a.agent_id === line.agent_id)
-
-            // Debug: log line data
-            console.log('Rendering line:', {
-              id: line.id,
-              name: line.line_name,
-              status: line.status,
-              hasQR: !!line.qr_code,
-              qrLength: line.qr_code?.length,
-              qrPreview: line.qr_code?.substring(0, 50)
-            })
 
             return (
               <div
@@ -1064,7 +684,7 @@ export function WAConnectionsSection() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleReconnect(line.id, line.evolution_instance_name)}
+                              onClick={() => handleReconnect(line.id)}
                               className="h-6 text-xs"
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
@@ -1082,7 +702,7 @@ export function WAConnectionsSection() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => loadData()}
+                              onClick={() => handleVerify(line.id)}
                               className="h-6 text-xs"
                               title="Verificar si ya está conectado"
                             >
@@ -1091,7 +711,7 @@ export function WAConnectionsSection() {
                             </Button>
                           </div>
                           <div className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded p-2 mt-2">
-                            💡 El QR expira en ~60 segundos. Si ya escaneaste, haz clic en "Verificar"
+                            💡 El código se renueva solo cada ~45 segundos. Escanéalo apenas aparezca.
                           </div>
                         </div>
                       )}
@@ -1131,7 +751,7 @@ export function WAConnectionsSection() {
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => handleLogout(line.id, line.evolution_instance_name)}
+                                onClick={() => handleLogout(line.id)}
                                 className="bg-orange-600 text-white hover:bg-orange-700"
                               >
                                 Desconectar
@@ -1145,7 +765,7 @@ export function WAConnectionsSection() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleReconnect(line.id, line.evolution_instance_name)}
+                          onClick={() => handleReconnect(line.id)}
                         >
                           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                           Reconectar
@@ -1168,7 +788,7 @@ export function WAConnectionsSection() {
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() => handleDeleteLine(line.id, line.evolution_instance_name)}
+                              onClick={() => handleDeleteLine(line.id)}
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
                               Eliminar

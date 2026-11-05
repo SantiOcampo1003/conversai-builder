@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
 import { supabase } from '@/lib/supabase'
@@ -67,97 +67,88 @@ function MetricCard({
   )
 }
 
+const EMPTY_METRICS: Metrics = { totalAgents: 0, totalConversations: 0, totalMessages: 0, uniqueUsers: 0 }
+
+async function loadOverview(clientId: string): Promise<{ metrics: Metrics; topAgents: TopAgent[] }> {
+  // 1. Obtener agentes del cliente impersonalizado
+  const { data: agentsData } = await supabase
+    .from('agents')
+    .select('agent_id, business_name')
+    .eq('client_id', clientId)
+
+  const agentIds = (agentsData || []).map(a => a.agent_id)
+  const totalAgents = agentIds.length
+
+  if (agentIds.length === 0) {
+    return { metrics: EMPTY_METRICS, topAgents: [] }
+  }
+
+  // 3. Obtener todo el historial de chat para esos agentes
+  const { data: chatData } = await supabase
+    .from('chat_history')
+    .select('user_id, agent_id, role')
+    .in('agent_id', agentIds)
+
+  if (!chatData) {
+    return { metrics: { ...EMPTY_METRICS, totalAgents }, topAgents: [] }
+  }
+
+  // Calcular métricas en cliente
+  const conversationKeys = new Set<string>()
+  const uniqueUserIds = new Set<string>()
+  const agentStats = new Map<string, { conversations: Set<string>; messages: number }>()
+
+  for (const row of chatData) {
+    const convKey = `${row.user_id}__${row.agent_id}`
+    conversationKeys.add(convKey)
+    uniqueUserIds.add(row.user_id)
+
+    if (!agentStats.has(row.agent_id)) {
+      agentStats.set(row.agent_id, { conversations: new Set(), messages: 0 })
+    }
+    const stat = agentStats.get(row.agent_id)!
+    stat.conversations.add(convKey)
+    stat.messages++
+  }
+
+  // Top agentes por conversaciones
+  const top: TopAgent[] = Array.from(agentStats.entries())
+    .map(([agent_id, stat]) => {
+      const agent = agentsData?.find(a => a.agent_id === agent_id)
+      return {
+        agent_id,
+        agent_name: agent?.business_name || agent_id,
+        conversations: stat.conversations.size,
+        messages: stat.messages,
+      }
+    })
+    .sort((a, b) => b.conversations - a.conversations)
+    .slice(0, 5)
+
+  return {
+    metrics: {
+      totalAgents,
+      totalConversations: conversationKeys.size,
+      totalMessages: chatData.length,
+      uniqueUsers: uniqueUserIds.size,
+    },
+    topAgents: top,
+  }
+}
+
 export function OverviewSection() {
   const { user } = useAuth()
   const { clientId, isLoading: loadingClientId } = useClientContext()
 
-  const [metrics, setMetrics] = useState<Metrics>({
-    totalAgents: 0,
-    totalConversations: 0,
-    totalMessages: 0,
-    uniqueUsers: 0,
+  // En caché por cliente: al volver a la sección se ve al instante y se refresca en segundo plano
+  const { data, isPending } = useQuery({
+    queryKey: ['overview', clientId],
+    enabled: !!user && !!clientId && !loadingClientId,
+    queryFn: () => loadOverview(clientId!),
   })
-  const [topAgents, setTopAgents] = useState<TopAgent[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (!user || !clientId || loadingClientId) return
-
-    const fetchData = async () => {
-      setLoading(true)
-
-      // 1. Obtener agentes del cliente impersonalizado
-      const { data: agentsData } = await supabase
-        .from('agents')
-        .select('agent_id, business_name')
-        .eq('client_id', clientId)
-
-      const agentIds = (agentsData || []).map(a => a.agent_id)
-      const totalAgents = agentIds.length
-
-      if (agentIds.length === 0) {
-        setMetrics({ totalAgents: 0, totalConversations: 0, totalMessages: 0, uniqueUsers: 0 })
-        setTopAgents([])
-        setLoading(false)
-        return
-      }
-
-      // 3. Obtener todo el historial de chat para esos agentes
-      const { data: chatData } = await supabase
-        .from('chat_history')
-        .select('user_id, agent_id, role')
-        .in('agent_id', agentIds)
-
-      if (!chatData) {
-        setMetrics({ totalAgents, totalConversations: 0, totalMessages: 0, uniqueUsers: 0 })
-        setLoading(false)
-        return
-      }
-
-      // Calcular métricas en cliente
-      const conversationKeys = new Set<string>()
-      const uniqueUserIds = new Set<string>()
-      const agentStats = new Map<string, { conversations: Set<string>; messages: number }>()
-
-      for (const row of chatData) {
-        const convKey = `${row.user_id}__${row.agent_id}`
-        conversationKeys.add(convKey)
-        uniqueUserIds.add(row.user_id)
-
-        if (!agentStats.has(row.agent_id)) {
-          agentStats.set(row.agent_id, { conversations: new Set(), messages: 0 })
-        }
-        const stat = agentStats.get(row.agent_id)!
-        stat.conversations.add(convKey)
-        stat.messages++
-      }
-
-      // Top agentes por conversaciones
-      const top: TopAgent[] = Array.from(agentStats.entries())
-        .map(([agent_id, stat]) => {
-          const agent = agentsData?.find(a => a.agent_id === agent_id)
-          return {
-            agent_id,
-            agent_name: agent?.business_name || agent_id,
-            conversations: stat.conversations.size,
-            messages: stat.messages,
-          }
-        })
-        .sort((a, b) => b.conversations - a.conversations)
-        .slice(0, 5)
-
-      setMetrics({
-        totalAgents,
-        totalConversations: conversationKeys.size,
-        totalMessages: chatData.length,
-        uniqueUsers: uniqueUserIds.size,
-      })
-      setTopAgents(top)
-      setLoading(false)
-    }
-
-    fetchData()
-  }, [user, clientId, loadingClientId])
+  const metrics = data?.metrics ?? EMPTY_METRICS
+  const topAgents = data?.topAgents ?? []
+  const loading = isPending
 
   return (
     <div className="flex flex-col gap-6">

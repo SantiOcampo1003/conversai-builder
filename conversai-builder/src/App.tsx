@@ -18,7 +18,12 @@ import PaymentFailure from "./pages/PaymentFailure";
 import PaymentPending from "./pages/PaymentPending";
 import AcceptInvite from "./pages/AcceptInvite";
 
-const queryClient = new QueryClient();
+// Los datos en caché se muestran al instante al volver a una vista y se refrescan en segundo plano
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { gcTime: 30 * 60_000, retry: 1 },
+  },
+});
 
 // Aplica tema y tamaño de fuente al <html> desde el store
 function PreferencesApplier() {
