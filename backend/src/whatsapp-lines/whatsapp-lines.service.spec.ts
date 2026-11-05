@@ -200,3 +200,40 @@ describe('WhatsAppLinesService acciones', () => {
     );
   });
 });
+
+describe('WhatsAppLinesService con líneas de la API oficial (meta_cloud)', () => {
+  const metaLine = (over: any = {}) =>
+    line({ provider: 'meta_cloud', evolution_instance_name: null, meta_phone_number_id: 'pn1', ...over });
+
+  it('listAndSync no consulta Evolution para líneas meta_cloud', async () => {
+    const { db } = makeDb([metaLine()]);
+    const evo = makeEvolution({});
+    const { lines, syncError } = await new WhatsAppLinesService(db, evo, config).listAndSync('c1');
+    expect(evo.connectionState).not.toHaveBeenCalled();
+    expect(lines[0].status).toBe('connected');
+    expect(syncError).toBeNull();
+  });
+
+  it('refresh devuelve la línea sin tocar Evolution', async () => {
+    const { db } = makeDb([metaLine()]);
+    const evo = makeEvolution({});
+    await new WhatsAppLinesService(db, evo, config).refresh('l1', true);
+    expect(evo.connectionState).not.toHaveBeenCalled();
+    expect(evo.connect).not.toHaveBeenCalled();
+  });
+
+  it('reconnect y logout no aplican: se gestionan desde Meta', async () => {
+    const { db } = makeDb([metaLine()]);
+    const svc = new WhatsAppLinesService(db, makeEvolution({}), config);
+    await expect(svc.reconnect('l1')).rejects.toThrow(BadRequestException);
+    await expect(svc.logout('l1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('remove borra la fila sin llamar a Evolution', async () => {
+    const { db, rows } = makeDb([metaLine()]);
+    const evo = makeEvolution({});
+    await new WhatsAppLinesService(db, evo, config).remove('l1');
+    expect(evo.remove).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(0);
+  });
+});

@@ -7,5 +7,6 @@ import { LangchainModule } from '../langchain/langchain.module';
   imports: [LangchainModule],
   controllers: [ChatController],
   providers: [ChatService],
+  exports: [ChatService],
 })
 export class ChatModule {}

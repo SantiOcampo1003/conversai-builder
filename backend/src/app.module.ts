@@ -9,6 +9,7 @@ import { EmailModule } from './email/email.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { WhatsAppLinesModule } from './whatsapp-lines/whatsapp-lines.module';
+import { WhatsAppCloudModule } from './whatsapp-cloud/whatsapp-cloud.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { WhatsAppLinesModule } from './whatsapp-lines/whatsapp-lines.module';
     IntegrationsModule,
     NotificationsModule,
     WhatsAppLinesModule,
+    WhatsAppCloudModule,
   ],
   controllers: [AppController],
   providers: [AppService],

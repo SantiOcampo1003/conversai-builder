@@ -4,6 +4,8 @@ import { DatabaseService } from '../database/database.service';
 import { EvolutionInstancesClient } from './evolution-instances.client';
 import { extractQr, LineStatus, mapEvolutionState, phoneFromOwnerJid } from './line-state';
 
+export type LineProvider = 'evolution' | 'meta_cloud';
+
 export interface WhatsAppLineRow {
   id: string;
   client_id: string;
@@ -11,7 +13,13 @@ export interface WhatsAppLineRow {
   phone_number: string | null;
   agent_id: string | null;
   status: LineStatus;
-  evolution_instance_name: string;
+  /** `evolution` = QR (WhatsApp Web); `meta_cloud` = API oficial de Meta. */
+  provider: LineProvider;
+  /** Solo líneas `evolution`. */
+  evolution_instance_name: string | null;
+  /** Solo líneas `meta_cloud`. */
+  meta_phone_number_id: string | null;
+  meta_waba_id: string | null;
   qr_code: string | null;
   last_connected_at: string | null;
   error_message: string | null;
@@ -21,6 +29,7 @@ export interface WhatsAppLineRow {
 
 export const NOT_FOUND_MESSAGE = 'La instancia ya no existe en WhatsApp. Elimina la línea y crea una nueva.';
 export const SYNC_ERROR_MESSAGE = 'No se pudo consultar WhatsApp; se muestra el último estado guardado.';
+export const META_MANAGED_MESSAGE = 'Esta línea usa la API oficial de WhatsApp y se gestiona desde Meta.';
 
 /** Webhook del flujo v2 de n8n al que Evolution envía los mensajes de las líneas nuevas. */
 const DEFAULT_WEBHOOK_URL = 'https://easy-agents-n8n.ftppdk.easypanel.host/webhook/whatsapp-incoming-generic-v2';
@@ -83,20 +92,21 @@ export class WhatsAppLinesService {
   }
 
   async reconnect(lineId: string): Promise<WhatsAppLineRow> {
-    const row = await this.get(lineId);
-    const qr = extractQr(await this.evolution.connect(row.evolution_instance_name));
+    const row = await this.evolutionLine(lineId);
+    const qr = extractQr(await this.evolution.connect(row.evolution_instance_name!));
     return this.update(row.id, { qr_code: qr, status: 'pending', error_message: null });
   }
 
   async logout(lineId: string): Promise<WhatsAppLineRow> {
-    const row = await this.get(lineId);
-    await this.evolution.logout(row.evolution_instance_name);
+    const row = await this.evolutionLine(lineId);
+    await this.evolution.logout(row.evolution_instance_name!);
     return this.update(row.id, { status: 'disconnected', phone_number: null, qr_code: null });
   }
 
   async remove(lineId: string): Promise<void> {
     const row = await this.get(lineId);
-    await this.evolution.remove(row.evolution_instance_name);
+    // Las líneas de la API oficial no tienen instancia en Evolution
+    if (row.provider !== 'meta_cloud') await this.evolution.remove(row.evolution_instance_name!);
     const { error } = await this.table().delete().eq('id', row.id);
     if (error) throw new BadRequestException(error.message);
   }
@@ -105,9 +115,10 @@ export class WhatsAppLinesService {
     return (await this.get(lineId)).client_id;
   }
 
-  /** Compara con Evolution y guarda solo si algo cambió. */
+  /** Compara con Evolution y guarda solo si algo cambió. Las líneas de Meta se devuelven tal cual. */
   private async sync(row: WhatsAppLineRow, renewQr: boolean): Promise<WhatsAppLineRow> {
-    const name = row.evolution_instance_name;
+    if (row.provider === 'meta_cloud') return row;
+    const name = row.evolution_instance_name!;
     const status = mapEvolutionState(await this.evolution.connectionState(name), row.status);
     const patch: Partial<WhatsAppLineRow> = {};
 
@@ -130,6 +141,13 @@ export class WhatsAppLinesService {
     }
 
     return Object.keys(patch).length ? this.update(row.id, patch) : row;
+  }
+
+  /** La línea, solo si es de Evolution: reconectar o cerrar sesión no aplica a la API oficial. */
+  private async evolutionLine(lineId: string): Promise<WhatsAppLineRow> {
+    const row = await this.get(lineId);
+    if (row.provider === 'meta_cloud') throw new BadRequestException(META_MANAGED_MESSAGE);
+    return row;
   }
 
   private async get(lineId: string): Promise<WhatsAppLineRow> {

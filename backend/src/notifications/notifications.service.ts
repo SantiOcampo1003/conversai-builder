@@ -60,6 +60,8 @@ export class NotificationsService {
       .from('whatsapp_lines')
       .select('evolution_instance_name, status')
       .eq('agent_id', agentId)
+      // Los avisos salen por Evolution; por la API oficial requerirían plantillas aprobadas (fuera de la ventana de 24 h)
+      .eq('provider', 'evolution')
       .order('updated_at', { ascending: false });
     const lines = (data ?? []) as { evolution_instance_name: string; status: string }[];
     return (lines.find((l) => l.status === 'connected') ?? lines[0])?.evolution_instance_name ?? null;
