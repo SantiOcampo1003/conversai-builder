@@ -1,9 +1,12 @@
 import { randomBytes } from 'crypto';
 import { decryptToken, encryptToken } from '../whatsapp-cloud/token-crypto';
-import { MetaTokenRenewalService, RENEW_WINDOW_DAYS } from './meta-token-renewal.service';
+import { EXPIRING_MESSAGE, MetaTokenRenewalService, RENEW_WINDOW_DAYS, REVOKED_MESSAGE } from './meta-token-renewal.service';
 
 const KEY = randomBytes(32).toString('base64');
-const config = { get: (k: string) => ({ WHATSAPP_TOKEN_ENCRYPTION_KEY: KEY } as Record<string, string>)[k] } as any;
+const appConfig = {
+  get: (k: string) => ({ WHATSAPP_TOKEN_ENCRYPTION_KEY: KEY, META_APP_ID: 'APP1', META_APP_SECRET: 'secret' } as Record<string, string>)[k],
+} as any;
+const config = appConfig;
 const NOW = new Date('2026-11-06T13:00:00Z');
 const inDays = (d: number) => new Date(NOW.getTime() + d * 86_400_000);
 
@@ -107,9 +110,7 @@ describe('MetaTokenRenewalService.renewDueTokens', () => {
       }),
     });
     await expect(new MetaTokenRenewalService(db, c as any, config).renewDueTokens(NOW)).resolves.toEqual({ renewed: 1, failed: 1, filled: 0 });
-    expect(rows[0].meta_token_refresh_error).toBe(
-      'No se pudo renovar el acceso a Meta: (#190) Error validating access token: The session has been invalidated. Reconecta con Facebook.',
-    );
+    expect(rows[0].meta_token_refresh_error).toBe(REVOKED_MESSAGE);
     expect(decryptToken(rows[0].meta_access_token_encrypted, KEY)).toBe('EAAG-revocado');
     expect(decryptToken(rows[1].meta_access_token_encrypted, KEY)).toBe('EAAG-nuevo');
   });
@@ -118,7 +119,7 @@ describe('MetaTokenRenewalService.renewDueTokens', () => {
     const { db, rows } = makeDb([{ id: 'l1', meta_access_token_encrypted: 'v1:roto', meta_token_expires_at: inDays(1).toISOString() }, line('l2', 'EAAG', inDays(1))]);
     const c = cloud();
     await expect(new MetaTokenRenewalService(db, c as any, config).renewDueTokens(NOW)).resolves.toEqual({ renewed: 1, failed: 1, filled: 0 });
-    expect(rows[0].meta_token_refresh_error).toMatch(/^No se pudo renovar el acceso a Meta/);
+    expect(rows[0].meta_token_refresh_error).toBe(REVOKED_MESSAGE);
   });
 
   it('actualiza solo si el token sigue siendo el que leyó (dos renovaciones a la vez no se pisan)', async () => {
@@ -129,5 +130,30 @@ describe('MetaTokenRenewalService.renewDueTokens', () => {
       ['id', 'l1'],
       ['meta_access_token_encrypted', previous],
     ]);
+  });
+
+  it('sin llave de cifrado o credenciales de la app no marca ninguna línea (es un problema del servidor)', async () => {
+    const { db, updates } = makeDb([line('l1', 'EAAG', inDays(2))]);
+    const c = cloud({ refreshToken: jest.fn(async () => { throw new Error('Falta configurar META_APP_ID o META_APP_SECRET en el servidor'); }) });
+    const noKey = { get: () => undefined } as any;
+    await expect(new MetaTokenRenewalService(db, c as any, noKey).renewDueTokens(NOW)).rejects.toThrow(/WHATSAPP_TOKEN_ENCRYPTION_KEY/);
+    const noApp = { get: (k: string) => (k === 'WHATSAPP_TOKEN_ENCRYPTION_KEY' ? KEY : undefined) } as any;
+    await expect(new MetaTokenRenewalService(db, c as any, noApp).renewDueTokens(NOW)).rejects.toThrow(/META_APP_ID/);
+    expect(c.refreshToken).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+
+  it('un error pasajero de Meta con margen no marca la línea (se reintenta mañana)', async () => {
+    const { db, rows } = makeDb([line('l1', 'EAAG', inDays(10))]);
+    const c = cloud({ refreshToken: jest.fn(async () => { throw new Error('WhatsApp (Meta) respondió 503: Service temporarily unavailable'); }) });
+    await expect(new MetaTokenRenewalService(db, c as any, appConfig).renewDueTokens(NOW)).resolves.toEqual({ renewed: 0, failed: 1, filled: 0 });
+    expect(rows[0].meta_token_refresh_error).toBeNull();
+  });
+
+  it('un error pasajero cuando faltan menos de 3 días sí avisa', async () => {
+    const { db, rows } = makeDb([line('l1', 'EAAG', inDays(2))]);
+    const c = cloud({ refreshToken: jest.fn(async () => { throw new Error('This operation was aborted'); }) });
+    await new MetaTokenRenewalService(db, c as any, appConfig).renewDueTokens(NOW);
+    expect(rows[0].meta_token_refresh_error).toBe(EXPIRING_MESSAGE);
   });
 });
