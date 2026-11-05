@@ -4,7 +4,9 @@ import { useClientContext } from '@/hooks/use-client-context'
 import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
+import { embeddedSignupConfig, launchEmbeddedSignup } from '@/lib/facebook-embedded-signup'
 import {
+  connectWithEmbeddedSignup,
   createLine,
   createMetaLine,
   deleteLine,
@@ -404,6 +406,79 @@ function ConnectMetaLineDialog({ clientId, onLineAdded, canAddMore }: ConnectMet
   )
 }
 
+/**
+ * "Conectar con Facebook" (Embedded Signup): el cliente conecta su propio número de WhatsApp Business con su
+ * cuenta de Meta. El nombre se pide antes de abrir el popup porque el code que devuelve Meta vence en 30 s.
+ */
+function ConnectFacebookDialog({ clientId, onLineAdded, canAddMore }: ConnectMetaLineDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [lineName, setLineName] = useState('WhatsApp Business')
+  const [step, setStep] = useState<'idle' | 'facebook' | 'saving'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const loading = step !== 'idle'
+
+  const handleConnect = async () => {
+    setError(null)
+    try {
+      setStep('facebook')
+      const signup = await launchEmbeddedSignup()
+      setStep('saving')
+      await connectWithEmbeddedSignup(clientId, lineName.trim(), signup)
+      setOpen(false)
+      setLineName('WhatsApp Business')
+      onLineAdded()
+    } catch (err) {
+      setError((err as Error).message || 'No se pudo conectar el número')
+    } finally {
+      setStep('idle')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!loading) { setOpen(next); setError(null) } }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" disabled={!canAddMore}>
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          Conectar con Facebook
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Conectar con Facebook</DialogTitle>
+          <DialogDescription>
+            Conecta el número de WhatsApp Business de tu empresa por la API oficial de Meta: sin QR y sin riesgo de
+            bloqueo por usar WhatsApp Web. Se abrirá una ventana de Facebook para elegir tu empresa y tu número.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="fb-line-name">Nombre de la línea</Label>
+            <Input id="fb-line-name" placeholder="Ej: Ventas" value={lineName} onChange={(e) => setLineName(e.target.value)} disabled={loading} />
+          </div>
+          <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+            <li>Necesitas acceso de administrador a la cuenta de Facebook de tu empresa.</li>
+            <li>El número no puede estar en uso en la app de WhatsApp normal (sí en WhatsApp Business).</li>
+            <li>Si el número tiene verificación en dos pasos, desactívala antes.</li>
+          </ul>
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">{error}</div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>Cancelar</Button>
+          <Button onClick={handleConnect} disabled={loading || !lineName.trim()}>
+            {step === 'facebook' && (<><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Esperando a Facebook...</>)}
+            {step === 'saving' && (<><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Activando el número...</>)}
+            {step === 'idle' && 'Continuar con Facebook'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export function WAConnectionsSection() {
   const { user } = useAuth()
@@ -463,9 +538,12 @@ export function WAConnectionsSection() {
         setSyncError(warning)
       } catch (err) {
         // Si el backend no responde, mostrar lo guardado para no dejar el panel vacío
+        // Columnas explícitas: el token cifrado de Meta no es legible desde el navegador
         const { data: linesData } = await supabase
           .from('whatsapp_lines')
-          .select('*')
+          .select(
+            'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, qr_code, last_connected_at, error_message, created_at, updated_at',
+          )
           .eq('client_id', clientId)
           .order('created_at', { ascending: false })
         if (isStale()) return
@@ -645,6 +723,9 @@ export function WAConnectionsSection() {
           <div className="flex items-center gap-2">
             {isSuperAdmin && (
               <ConnectMetaLineDialog clientId={clientId} onLineAdded={loadData} canAddMore={canAddMore} />
+            )}
+            {embeddedSignupConfig() && (
+              <ConnectFacebookDialog clientId={clientId} onLineAdded={loadData} canAddMore={canAddMore} />
             )}
             <AddLineDialog
               clientId={clientId}

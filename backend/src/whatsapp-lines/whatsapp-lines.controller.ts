@@ -19,6 +19,15 @@ export class CreateMetaLineDto {
   @IsOptional() @Matches(/^\d{5,30}$/, { message: 'WABA ID inválido' }) wabaId?: string;
 }
 
+/** "Conectar con Facebook": lo que devuelve el popup de Embedded Signup. */
+export class EmbeddedSignupDto {
+  @Matches(UUID_SHAPE, { message: 'clientId inválido' }) clientId: string;
+  @IsString() @IsNotEmpty() @MaxLength(100) lineName: string;
+  @IsString() @IsNotEmpty() @MaxLength(2000) code: string;
+  @Matches(/^\d{5,30}$/, { message: 'Phone Number ID inválido' }) phoneNumberId: string;
+  @Matches(/^\d{5,30}$/, { message: 'WABA ID inválido' }) wabaId: string;
+}
+
 /** El QR solo lo ve quien gestiona la línea: con él cualquiera podría vincular su propio teléfono. */
 const forLevel = (line: WhatsAppLineRow, level: 'view' | 'manage'): WhatsAppLineRow =>
   level === 'manage' ? line : { ...line, qr_code: null };
@@ -49,6 +58,15 @@ export class WhatsAppLinesController {
   async createMeta(@Headers('authorization') auth: string | undefined, @Body() dto: CreateMetaLineDto) {
     await this.access.assertSuperAdmin(auth);
     return { line: await this.lines.createMetaLine(dto.clientId, dto.lineName, dto.phoneNumberId, dto.wabaId ?? null) };
+  }
+
+  /** El cliente conecta su propio número con su cuenta de Meta: lo puede hacer el admin del cliente. */
+  @Post('meta/embedded-signup')
+  async embeddedSignup(@Headers('authorization') auth: string | undefined, @Body() dto: EmbeddedSignupDto) {
+    await this.access.assertClientAccess(auth, dto.clientId, 'manage');
+    return {
+      line: await this.lines.connectWithEmbeddedSignup(dto.clientId, dto.lineName, dto.code, dto.phoneNumberId, dto.wabaId),
+    };
   }
 
   @Post(':id/refresh')
