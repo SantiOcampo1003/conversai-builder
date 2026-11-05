@@ -23,6 +23,10 @@ export interface WhatsAppLineRow {
   /** Solo líneas `meta_cloud`. */
   meta_phone_number_id: string | null;
   meta_waba_id: string | null;
+  /** Vencimiento del token del cliente (null = no vence o usa el de la plataforma). */
+  meta_token_expires_at: string | null;
+  /** Motivo del último fallo al renovar el token; el cliente debe reconectar. */
+  meta_token_refresh_error: string | null;
   qr_code: string | null;
   last_connected_at: string | null;
   error_message: string | null;
@@ -32,7 +36,7 @@ export interface WhatsAppLineRow {
 
 /** Columnas que se devuelven al navegador: nunca el token cifrado de Meta. */
 const LINE_COLUMNS =
-  'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, qr_code, last_connected_at, error_message, created_at, updated_at';
+  'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, meta_token_expires_at, meta_token_refresh_error, qr_code, last_connected_at, error_message, created_at, updated_at';
 
 export const DUPLICATED_NUMBER_MESSAGE = 'Ese número ya está conectado a una línea.';
 export const NOT_FOUND_MESSAGE = 'La instancia ya no existe en WhatsApp. Elimina la línea y crea una nueva.';

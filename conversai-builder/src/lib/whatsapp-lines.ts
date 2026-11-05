@@ -14,6 +14,10 @@ export interface WhatsAppLine {
   evolution_instance_name: string | null
   meta_phone_number_id: string | null
   meta_waba_id: string | null
+  /** Vencimiento del acceso a Meta (null = no vence o usa el de la plataforma). */
+  meta_token_expires_at: string | null
+  /** Último fallo al renovar el acceso a Meta; hay que reconectar con Facebook. */
+  meta_token_refresh_error: string | null
   qr_code: string | null
   last_connected_at: string | null
   error_message: string | null
