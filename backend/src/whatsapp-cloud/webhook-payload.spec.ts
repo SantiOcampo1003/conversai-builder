@@ -53,7 +53,7 @@ describe('extractInboundMessages', () => {
       payload([{ from: '573001112233', id: 'wamid.1', timestamp: '1', type: 'text', text: { body: 'Hola' } }]),
     );
     expect(msgs).toEqual([
-      { phoneNumberId: 'PN1', from: '573001112233', messageId: 'wamid.1', type: 'text', text: 'Hola', profileName: 'Ana' },
+      { phoneNumberId: 'PN1', from: '573001112233', messageId: 'wamid.1', type: 'text', text: 'Hola', mediaId: null, profileName: 'Ana' },
     ]);
   });
 
@@ -68,16 +68,16 @@ describe('extractInboundMessages', () => {
     expect(msgs.map((m) => m.text)).toEqual(['Sí', 'Plan Pro', 'Quiero más info']);
   });
 
-  it('marca sin texto los tipos que el piloto no procesa (audio, imagen, reacción)', () => {
+  it('marca sin texto los tipos que no son texto y guarda el ID del audio para transcribirlo', () => {
     const msgs = extractInboundMessages(
       payload([
         { from: '57300', id: 'a', type: 'audio', audio: { id: 'm1' } },
         { from: '57300', id: 'b', type: 'reaction', reaction: { emoji: '🙏' } },
       ]),
     );
-    expect(msgs.map((m) => [m.type, m.text])).toEqual([
-      ['audio', null],
-      ['reaction', null],
+    expect(msgs.map((m) => [m.type, m.text, m.mediaId])).toEqual([
+      ['audio', null, 'm1'],
+      ['reaction', null, null],
     ]);
   });
 
