@@ -41,6 +41,10 @@ const LINE_COLUMNS =
 export const DUPLICATED_NUMBER_MESSAGE = 'Ese número ya está conectado a una línea.';
 export const NOT_FOUND_MESSAGE = 'La instancia ya no existe en WhatsApp. Elimina la línea y crea una nueva.';
 export const SYNC_ERROR_MESSAGE = 'No se pudo consultar WhatsApp; se muestra el último estado guardado.';
+export const NO_NUMBER_MESSAGE =
+  'Meta no compartió ningún número. Vuelve a conectar y, si aparece "Anteriormente vinculaste EasyAgents", pulsa "Editar configuración" y elige tu número.';
+export const MANY_NUMBERS_MESSAGE =
+  'Autorizaste varios números. Vuelve a conectar, pulsa "Editar configuración" y elige solo el número que quieres usar.';
 export const META_MANAGED_MESSAGE = 'Esta línea usa la API oficial de WhatsApp y se gestiona desde Meta.';
 
 /** Webhook del flujo v2 de n8n al que Evolution envía los mensajes de las líneas nuevas. */
@@ -144,8 +148,8 @@ export class WhatsAppLinesService {
     clientId: string,
     lineName: string,
     code: string,
-    phoneNumberId: string,
-    wabaId: string,
+    phoneNumberId: string | null,
+    wabaId: string | null,
   ): Promise<WhatsAppLineRow> {
     // Antes de gastar el code (sirve una sola vez): llave configurada, cupo de líneas y número libre
     const encryptionKey = this.config.get<string>('WHATSAPP_TOKEN_ENCRYPTION_KEY');
@@ -155,14 +159,24 @@ export class WhatsAppLinesService {
       throw new InternalServerErrorException((e as Error).message);
     }
     await this.assertLineAvailable(clientId);
-    const { data: existing } = await this.table().select('id').eq('meta_phone_number_id', phoneNumberId).maybeSingle();
-    if (existing) throw new BadRequestException(DUPLICATED_NUMBER_MESSAGE);
+    if (phoneNumberId && (await this.isNumberTaken(phoneNumberId))) throw new BadRequestException(DUPLICATED_NUMBER_MESSAGE);
 
     let token: string;
     try {
       token = await this.cloud.exchangeCode(code);
     } catch (e) {
       throw new BadRequestException(`Facebook no confirmó la conexión; vuelve a intentarlo. (${(e as Error).message})`);
+    }
+
+    let expiresAt: Date | null = null;
+    if (phoneNumberId && wabaId) {
+      // El vencimiento no bloquea la conexión: si falla, el cron de renovación lo consulta después
+      expiresAt = await this.cloud.debugToken(token).then(
+        (info) => info.expiresAt,
+        (e) => (this.logger.warn(`No se pudo leer el vencimiento del token: ${(e as Error).message}`), null),
+      );
+    } else {
+      ({ phoneNumberId, wabaId, expiresAt } = await this.discoverSignupNumber(token));
     }
 
     try {
@@ -193,6 +207,7 @@ export class WhatsAppLinesService {
         meta_phone_number_id: phoneNumberId,
         meta_waba_id: wabaId,
         meta_access_token_encrypted: encryptToken(token, encryptionKey),
+        meta_token_expires_at: expiresAt?.toISOString() ?? null,
         phone_number: phone.displayPhoneNumber.replace(/\D/g, ''),
         status: 'connected',
         last_connected_at: new Date().toISOString(),
@@ -201,6 +216,36 @@ export class WhatsAppLinesService {
       .single();
     if (error) throw new BadRequestException(insertErrorMessage(error.message));
     return data as WhatsAppLineRow;
+  }
+
+  private async isNumberTaken(phoneNumberId: string): Promise<boolean> {
+    const { data } = await this.table().select('id').eq('meta_phone_number_id', phoneNumberId).maybeSingle();
+    return !!data;
+  }
+
+  /**
+   * Respaldo cuando el popup no envía los IDs (Meta reusó una autorización anterior): el token dice qué cuentas
+   * autorizó el cliente; solo se conecta si hay exactamente un número libre.
+   */
+  private async discoverSignupNumber(token: string): Promise<{ phoneNumberId: string; wabaId: string; expiresAt: Date | null }> {
+    let found: { id: string; wabaId: string }[];
+    let expiresAt: Date | null;
+    try {
+      const info = await this.cloud.debugToken(token);
+      expiresAt = info.expiresAt;
+      const perWaba = await Promise.all(
+        info.wabaIds.map(async (w) => (await this.cloud.listPhoneNumbers(w, token)).map((n) => ({ id: n.id, wabaId: w }))),
+      );
+      found = perWaba.flat();
+    } catch (e) {
+      throw new BadRequestException(`No se pudo consultar qué número autorizaste en Facebook; vuelve a intentarlo. (${(e as Error).message})`);
+    }
+    if (found.length === 0) throw new BadRequestException(NO_NUMBER_MESSAGE);
+
+    const free = (await Promise.all(found.map(async (n) => ((await this.isNumberTaken(n.id)) ? null : n)))).filter((n) => n !== null);
+    if (free.length === 0) throw new BadRequestException(DUPLICATED_NUMBER_MESSAGE);
+    if (free.length > 1) throw new BadRequestException(MANY_NUMBERS_MESSAGE);
+    return { phoneNumberId: free[0].id, wabaId: free[0].wabaId, expiresAt };
   }
 
   async reconnect(lineId: string): Promise<WhatsAppLineRow> {

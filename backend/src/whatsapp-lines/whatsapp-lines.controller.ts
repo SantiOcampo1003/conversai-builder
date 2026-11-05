@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AgentAccessService } from '../common/agent-access.service';
 import { WhatsAppLineRow, WhatsAppLinesService } from './whatsapp-lines.service';
@@ -24,8 +24,9 @@ export class EmbeddedSignupDto {
   @Matches(UUID_SHAPE, { message: 'clientId inválido' }) clientId: string;
   @IsString() @IsNotEmpty() @MaxLength(100) lineName: string;
   @IsString() @IsNotEmpty() @MaxLength(2000) code: string;
-  @Matches(/^\d{5,30}$/, { message: 'Phone Number ID inválido' }) phoneNumberId: string;
-  @Matches(/^\d{5,30}$/, { message: 'WABA ID inválido' }) wabaId: string;
+  /** Ambos o ninguno: si Meta reusa una autorización anterior el popup no los envía y el backend los descubre. */
+  @IsOptional() @Matches(/^\d{5,30}$/, { message: 'Phone Number ID inválido' }) phoneNumberId?: string;
+  @IsOptional() @Matches(/^\d{5,30}$/, { message: 'WABA ID inválido' }) wabaId?: string;
 }
 
 /** El QR solo lo ve quien gestiona la línea: con él cualquiera podría vincular su propio teléfono. */
@@ -63,9 +64,10 @@ export class WhatsAppLinesController {
   /** El cliente conecta su propio número con su cuenta de Meta: lo puede hacer el admin del cliente. */
   @Post('meta/embedded-signup')
   async embeddedSignup(@Headers('authorization') auth: string | undefined, @Body() dto: EmbeddedSignupDto) {
+    if (!dto.phoneNumberId !== !dto.wabaId) throw new BadRequestException('Faltan datos del número de Meta');
     await this.access.assertClientAccess(auth, dto.clientId, 'manage');
     return {
-      line: await this.lines.connectWithEmbeddedSignup(dto.clientId, dto.lineName, dto.code, dto.phoneNumberId, dto.wabaId),
+      line: await this.lines.connectWithEmbeddedSignup(dto.clientId, dto.lineName, dto.code, dto.phoneNumberId ?? null, dto.wabaId ?? null),
     };
   }
 

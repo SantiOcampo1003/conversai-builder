@@ -2,7 +2,14 @@ import { BadRequestException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { decryptToken } from '../whatsapp-cloud/token-crypto';
 import { EvolutionState } from './line-state';
-import { NOT_FOUND_MESSAGE, SYNC_ERROR_MESSAGE, WhatsAppLinesService } from './whatsapp-lines.service';
+import {
+  DUPLICATED_NUMBER_MESSAGE,
+  MANY_NUMBERS_MESSAGE,
+  NO_NUMBER_MESSAGE,
+  NOT_FOUND_MESSAGE,
+  SYNC_ERROR_MESSAGE,
+  WhatsAppLinesService,
+} from './whatsapp-lines.service';
 
 /** Tabla whatsapp_lines en memoria con el subconjunto del query builder que usa el servicio. */
 function makeDb(initial: any[], opts: { insertError?: string } = {}) {
@@ -319,6 +326,8 @@ describe('WhatsAppLinesService.connectWithEmbeddedSignup', () => {
     subscribeApp: jest.fn(async () => undefined),
     registerPhoneNumber: jest.fn(async () => undefined),
     getPhoneNumber: jest.fn(async () => ({ displayPhoneNumber: '+57 300 111 2233', verifiedName: 'Tienda' })),
+    debugToken: jest.fn(async () => ({ expiresAt: new Date('2027-01-04T00:00:00Z'), wabaIds: ['7654321'] })),
+    listPhoneNumbers: jest.fn(async () => [{ id: '1234567', displayPhoneNumber: '+57 300 111 2233' }]),
     ...over,
   });
   const connect = (db: any, c: any, cfg = esConfig) =>
@@ -376,6 +385,96 @@ describe('WhatsAppLinesService.connectWithEmbeddedSignup', () => {
     await expect(connect(db, c)).rejects.toThrow(/Facebook no confirmó la conexión/);
     expect(c.subscribeApp).not.toHaveBeenCalled();
     expect(tables.whatsapp_lines).toHaveLength(0);
+  });
+
+  it('guarda el vencimiento del token y no busca números si el popup trajo los IDs', async () => {
+    const { db, tables } = makeTables([]);
+    const c = cloud();
+    await connect(db, c);
+    expect(c.debugToken).toHaveBeenCalledWith('EAAG-token-cliente');
+    expect(c.listPhoneNumbers).not.toHaveBeenCalled();
+    expect(tables.whatsapp_lines[0].meta_token_expires_at).toBe('2027-01-04T00:00:00.000Z');
+  });
+
+  it('con IDs, si no se puede leer el vencimiento igual conecta (el cron lo llena después)', async () => {
+    const { db, tables } = makeTables([]);
+    const c = cloud({ debugToken: jest.fn(async () => { throw new Error('(#190) boom'); }) });
+    await connect(db, c);
+    expect(tables.whatsapp_lines[0]).toMatchObject({ meta_phone_number_id: '1234567', meta_token_expires_at: null });
+  });
+
+  describe('sin IDs del popup (Meta reusó una autorización anterior)', () => {
+    const connectNoIds = (db: any, c: any) =>
+      new WhatsAppLinesService(db, makeEvolution({}), esConfig, c).connectWithEmbeddedSignup('c1', 'Ventas', 'CODE', null, null);
+
+    it('descubre la WABA y el número autorizados y conecta', async () => {
+      const { db, tables } = makeTables([]);
+      const c = cloud({
+        debugToken: jest.fn(async () => ({ expiresAt: new Date('2027-01-04T00:00:00Z'), wabaIds: ['W1'] })),
+        listPhoneNumbers: jest.fn(async () => [{ id: 'PN1', displayPhoneNumber: '+57 300 111 2233' }]),
+      });
+      await connectNoIds(db, c);
+      expect(c.listPhoneNumbers).toHaveBeenCalledWith('W1', 'EAAG-token-cliente');
+      expect(c.subscribeApp).toHaveBeenCalledWith('W1', 'EAAG-token-cliente');
+      expect(c.registerPhoneNumber).toHaveBeenCalledWith('PN1', expect.stringMatching(/^\d{6}$/), 'EAAG-token-cliente');
+      expect(tables.whatsapp_lines[0]).toMatchObject({
+        meta_phone_number_id: 'PN1', meta_waba_id: 'W1', meta_token_expires_at: '2027-01-04T00:00:00.000Z',
+      });
+    });
+
+    it('sin números autorizados lo explica y no crea nada', async () => {
+      const { db, tables } = makeTables([]);
+      const c = cloud({ listPhoneNumbers: jest.fn(async () => []) });
+      await expect(connectNoIds(db, c)).rejects.toThrow(NO_NUMBER_MESSAGE);
+      expect(c.subscribeApp).not.toHaveBeenCalled();
+      expect(tables.whatsapp_lines).toHaveLength(0);
+    });
+
+    it('sin WABAs autorizadas también es NO_NUMBER_MESSAGE', async () => {
+      const { db } = makeTables([]);
+      const c = cloud({ debugToken: jest.fn(async () => ({ expiresAt: null, wabaIds: [] })) });
+      await expect(connectNoIds(db, c)).rejects.toThrow(NO_NUMBER_MESSAGE);
+    });
+
+    it('con varios números libres no elige uno al azar', async () => {
+      const { db, tables } = makeTables([]);
+      const c = cloud({
+        listPhoneNumbers: jest.fn(async () => [
+          { id: 'PN1', displayPhoneNumber: '+57 1' },
+          { id: 'PN2', displayPhoneNumber: '+57 2' },
+        ]),
+      });
+      await expect(connectNoIds(db, c)).rejects.toThrow(MANY_NUMBERS_MESSAGE);
+      expect(tables.whatsapp_lines).toHaveLength(0);
+    });
+
+    it('si de dos números uno ya está conectado usa el libre', async () => {
+      const { db, tables } = makeTables([{ client_id: 'c1', meta_phone_number_id: 'PN1' }]);
+      const c = cloud({
+        debugToken: jest.fn(async () => ({ expiresAt: null, wabaIds: ['W1'] })),
+        listPhoneNumbers: jest.fn(async () => [
+          { id: 'PN1', displayPhoneNumber: '+57 1' },
+          { id: 'PN2', displayPhoneNumber: '+57 2' },
+        ]),
+      });
+      await connectNoIds(db, c);
+      expect(tables.whatsapp_lines[1]).toMatchObject({ meta_phone_number_id: 'PN2', meta_waba_id: 'W1', meta_token_expires_at: null });
+    });
+
+    it('si el único número ya está conectado lo dice', async () => {
+      const { db, tables } = makeTables([{ client_id: 'otro', meta_phone_number_id: 'PN1' }]);
+      const c = cloud({ listPhoneNumbers: jest.fn(async () => [{ id: 'PN1', displayPhoneNumber: '+57 1' }]) });
+      await expect(connectNoIds(db, c)).rejects.toThrow(DUPLICATED_NUMBER_MESSAGE);
+      expect(c.subscribeApp).not.toHaveBeenCalled();
+      expect(tables.whatsapp_lines).toHaveLength(1);
+    });
+
+    it('si Meta falla al consultar el token lo explica sin crear nada', async () => {
+      const { db, tables } = makeTables([]);
+      const c = cloud({ debugToken: jest.fn(async () => { throw new Error('(#190) boom'); }) });
+      await expect(connectNoIds(db, c)).rejects.toThrow(/No se pudo consultar qué número autorizaste/);
+      expect(tables.whatsapp_lines).toHaveLength(0);
+    });
   });
 
   it('sin llave de cifrado configurada no llama a Meta', async () => {
