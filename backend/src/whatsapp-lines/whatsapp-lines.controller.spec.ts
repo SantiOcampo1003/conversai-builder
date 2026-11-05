@@ -43,3 +43,22 @@ describe('WhatsAppLinesController', () => {
     expect(lines.remove).not.toHaveBeenCalled();
   });
 });
+
+describe('CreateLineDto', () => {
+  const { validate } = require('class-validator');
+  const { plainToInstance } = require('class-transformer');
+  const { CreateLineDto } = require('./whatsapp-lines.controller');
+
+  it.each(['00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111', 'facf871a-d062-4ea9-98a0-03a6d57fa898'])(
+    'acepta el client_id %s que existe en la base',
+    async (clientId) => {
+      const errors = await validate(plainToInstance(CreateLineDto, { clientId, lineName: 'Ventas' }));
+      expect(errors).toHaveLength(0);
+    },
+  );
+
+  it('rechaza un clientId que no tiene forma de uuid', async () => {
+    const errors = await validate(plainToInstance(CreateLineDto, { clientId: 'abc', lineName: 'Ventas' }));
+    expect(errors).toHaveLength(1);
+  });
+});

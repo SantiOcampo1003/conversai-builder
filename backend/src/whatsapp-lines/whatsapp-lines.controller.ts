@@ -1,10 +1,13 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
 import { AgentAccessService } from '../common/agent-access.service';
 import { WhatsAppLinesService } from './whatsapp-lines.service';
 
-class CreateLineDto {
-  @IsUUID() clientId: string;
+// Forma de uuid como la acepta Postgres: @IsUUID rechaza ids reales como el del super admin (000…)
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export class CreateLineDto {
+  @Matches(UUID_SHAPE, { message: 'clientId inválido' }) clientId: string;
   @IsString() @IsNotEmpty() @MaxLength(100) lineName: string;
 }
 
