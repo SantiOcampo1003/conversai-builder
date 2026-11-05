@@ -9,7 +9,11 @@ export interface WhatsAppLine {
   phone_number: string | null
   agent_id: string | null
   status: LineStatus
-  evolution_instance_name: string
+  /** `evolution` = QR (WhatsApp Web); `meta_cloud` = API oficial de Meta. */
+  provider: 'evolution' | 'meta_cloud'
+  evolution_instance_name: string | null
+  meta_phone_number_id: string | null
+  meta_waba_id: string | null
   qr_code: string | null
   last_connected_at: string | null
   error_message: string | null

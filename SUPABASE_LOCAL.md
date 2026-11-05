@@ -102,6 +102,15 @@ Para detectar cambios hechos a mano (drift), esto debe salir vacío salvo ruido
 supabase db diff --linked --schema public,storage
 ```
 
+### Pendiente: aplicar migraciones desde el CI
+
+Hoy ningún workflow ejecuta `supabase db push`: `.github/workflows/deploy-backend.yml` solo llama al webhook
+de EasyPanel. Las migraciones se aplican a mano **antes** de mergear el PR que las necesita.
+
+Propuesta (no implementada): un job previo al deploy del backend que ejecute `supabase db push --linked` y,
+si falla, detenga el despliegue. Requiere los secretos `SUPABASE_ACCESS_TOKEN` y `SUPABASE_DB_PASSWORD`
+en GitHub, y revisar con cuidado todo PR que traiga migraciones, porque se aplicarían solas en producción.
+
 Si se coló un cambio manual: crea una migración idempotente con el SQL que
 devuelve el diff (`IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`,
 `ON CONFLICT DO NOTHING`) y márcala como aplicada en producción sin ejecutarla:

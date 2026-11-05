@@ -3,7 +3,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: el webhook de Meta firma el cuerpo crudo (X-Hub-Signature-256)
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Enable CORS
   app.enableCors();

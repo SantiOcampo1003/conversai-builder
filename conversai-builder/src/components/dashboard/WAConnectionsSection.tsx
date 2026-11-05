@@ -627,6 +627,15 @@ export function WAConnectionsSection() {
                         {line.line_name}
                       </h3>
                       <StatusBadge status={line.status} />
+                      {line.provider === 'meta_cloud' && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-500/10 text-blue-600 border-blue-500/20"
+                          title="Conectada por la API oficial de WhatsApp (Meta)"
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          API oficial
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-2 text-sm">
@@ -665,7 +674,7 @@ export function WAConnectionsSection() {
                         )}
                       </div>
 
-                      {line.status === 'pending' && !line.qr_code && (
+                      {line.provider !== 'meta_cloud' && line.status === 'pending' && !line.qr_code && (
                         <div className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded p-2 mt-2">
                           ⏳ Generando código QR... Si no aparece, usa el botón "Reconectar"
                         </div>
@@ -677,7 +686,7 @@ export function WAConnectionsSection() {
                         </div>
                       )}
 
-                      {line.status === 'pending' && line.qr_code && (
+                      {line.provider !== 'meta_cloud' && line.status === 'pending' && line.qr_code && (
                         <div className="mt-3 p-3 bg-muted/50 rounded-lg border border-border">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs text-muted-foreground">Escanea este código QR desde WhatsApp:</p>
@@ -727,7 +736,7 @@ export function WAConnectionsSection() {
 
                   {isAdmin && (
                     <div className="flex items-center gap-2">
-                      {line.status === 'connected' && (
+                      {line.provider !== 'meta_cloud' && line.status === 'connected' && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
@@ -761,7 +770,7 @@ export function WAConnectionsSection() {
                         </AlertDialog>
                       )}
 
-                      {(line.status === 'disconnected' || line.status === 'error') && (
+                      {line.provider !== 'meta_cloud' && (line.status === 'disconnected' || line.status === 'error') && (
                         <Button
                           variant="outline"
                           size="sm"
