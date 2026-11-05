@@ -17,6 +17,9 @@ import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentFailure from "./pages/PaymentFailure";
 import PaymentPending from "./pages/PaymentPending";
 import AcceptInvite from "./pages/AcceptInvite";
+import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
+import Terms from "./pages/legal/Terms";
+import DataDeletion from "./pages/legal/DataDeletion";
 
 // Los datos en caché se muestran al instante al volver a una vista y se refrescan en segundo plano
 const queryClient = new QueryClient({
@@ -63,6 +66,14 @@ function AppRoutes() {
       <Route path="/payment/failure" element={<PaymentFailure />} />
       <Route path="/payment/pending" element={<PaymentPending />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
+      {/* Páginas legales (Meta las exige para la app y la verificación del negocio) */}
+      <Route path="/privacidad" element={<PrivacyPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/politica-de-privacidad" element={<PrivacyPolicy />} />
+      <Route path="/terminos" element={<Terms />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/eliminacion-de-datos" element={<DataDeletion />} />
+      <Route path="/data-deletion" element={<DataDeletion />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>

@@ -6,6 +6,7 @@ import { ValuePropositionSection } from "@/components/ValuePropositionSection";
 import { useToast } from "@/hooks/use-toast";
 // import { PricingSection } from "@/components/PricingSection";
 import { FlowFormSection } from "@/components/FlowFormSection";
+import { SiteFooter } from "@/components/SiteFooter";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ const Index = () => {
         <FlowFormSection />
       </div>
       {/* <PricingSection /> */}
+      <SiteFooter />
     </div>
   );
 };
