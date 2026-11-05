@@ -69,8 +69,17 @@ export const createMetaLine = async (clientId: string, lineName: string, phoneNu
 export const connectWithEmbeddedSignup = async (
   clientId: string,
   lineName: string,
-  signup: { code: string; phoneNumberId: string; wabaId: string },
-) => (await call<{ line: WhatsAppLine }>('POST', '/meta/embedded-signup', { clientId, lineName, ...signup })).line
+  signup: { code: string; phoneNumberId: string | null; wabaId: string | null },
+) =>
+  (
+    await call<{ line: WhatsAppLine }>('POST', '/meta/embedded-signup', {
+      clientId,
+      lineName,
+      code: signup.code,
+      // Sin IDs (Meta reusó una autorización anterior) el backend descubre el número
+      ...(signup.phoneNumberId && signup.wabaId && { phoneNumberId: signup.phoneNumberId, wabaId: signup.wabaId }),
+    })
+  ).line
 
 /** Estado actual; si la línea espera escaneo trae el QR vigente. */
 export const refreshLine = async (id: string) => (await call<{ line: WhatsAppLine }>('POST', `/${id}/refresh`)).line

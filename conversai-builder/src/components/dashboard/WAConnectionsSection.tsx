@@ -460,6 +460,7 @@ function ConnectFacebookDialog({ clientId, onLineAdded, canAddMore }: ConnectMet
             <li>Necesitas acceso de administrador a la cuenta de Facebook de tu empresa.</li>
             <li>El número no puede estar en uso en la app de WhatsApp normal (sí en WhatsApp Business).</li>
             <li>Si el número tiene verificación en dos pasos, desactívala antes.</li>
+            <li>Si Facebook te dice que ya vinculaste EasyAgents, pulsa <strong>Editar configuración</strong> para elegir el número.</li>
           </ul>
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">{error}</div>
