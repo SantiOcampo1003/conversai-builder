@@ -2,7 +2,7 @@ import { BadGatewayException, ForbiddenException } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { WhatsAppCloudClient } from './whatsapp-cloud.client';
 import { WhatsAppCloudController } from './whatsapp-cloud.controller';
-import { UNSUPPORTED_MESSAGE, WhatsAppCloudService } from './whatsapp-cloud.service';
+import { AUDIO_FAILED_MESSAGE, UNSUPPORTED_MESSAGE, WhatsAppCloudService } from './whatsapp-cloud.service';
 
 const env: Record<string, string> = {
   WHATSAPP_ACCESS_TOKEN: 'tok',
@@ -77,6 +77,27 @@ describe('WhatsAppCloudClient', () => {
     });
   });
 
+  it('descarga un archivo: pide la URL temporal a Graph y la baja con el mismo token', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (url) =>
+      String(url).includes('/v25.0/MEDIA1')
+        ? new Response('{"url":"https://lookaside.fbsbx.com/x?mid=1","mime_type":"audio/ogg; codecs=opus","file_size":3}', { status: 200 })
+        : new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    );
+    const media = await new WhatsAppCloudClient(config).downloadMedia('MEDIA1');
+    expect(media).toEqual({ data: Buffer.from([1, 2, 3]), mimeType: 'audio/ogg; codecs=opus' });
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('https://lookaside.fbsbx.com/x?mid=1');
+    expect((init.headers as any).Authorization).toBe('Bearer tok');
+  });
+
+  it('no descarga archivos de más de 16 MB', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response(`{"url":"https://x","mime_type":"audio/ogg","file_size":${17 * 1024 * 1024}}`, { status: 200 }));
+    await expect(new WhatsAppCloudClient(config).downloadMedia('M')).rejects.toThrow(/demasiado grande/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('sin token configurado no llama a Meta', async () => {
     const fetchMock = ok();
     await expect(new WhatsAppCloudClient({ get: () => undefined } as any).sendText('PN1', '57300', 'x')).rejects.toThrow(
@@ -111,8 +132,14 @@ const text = (body: string, id = 'wamid.1') => ({ from: '573001112233', id, type
 
 function setup(line: any = { meta_phone_number_id: 'PN1', agent_id: 'agent_1' }, reply: any = { output: 'Hola, ¿en qué te ayudo?' }) {
   const chat = { handleMessage: jest.fn(async () => reply) } as any;
-  const client = { sendText: jest.fn(async () => undefined), sendFile: jest.fn(async () => undefined), markReadAndTyping: jest.fn(async () => undefined) } as any;
-  return { svc: new WhatsAppCloudService(makeDb(line), chat, client), chat, client };
+  const client = {
+    sendText: jest.fn(async () => undefined),
+    sendFile: jest.fn(async () => undefined),
+    markReadAndTyping: jest.fn(async () => undefined),
+    downloadMedia: jest.fn(async () => ({ data: Buffer.from('ogg'), mimeType: 'audio/ogg; codecs=opus' })),
+  } as any;
+  const transcriber = { transcribe: jest.fn(async () => 'Quiero saber el precio') } as any;
+  return { svc: new WhatsAppCloudService(makeDb(line), chat, client, transcriber), chat, client, transcriber };
 }
 
 describe('WhatsAppCloudService.handleWebhook', () => {
@@ -138,10 +165,36 @@ describe('WhatsAppCloudService.handleWebhook', () => {
     expect(chat.handleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('a un audio o una imagen responde que por ahora solo lee texto, sin llamar al agente', async () => {
+  const voiceNote = (id = 'a1') => ({ from: '573001112233', id, type: 'audio', audio: { id: 'MEDIA1', mime_type: 'audio/ogg; codecs=opus', voice: true } });
+
+  it('transcribe la nota de voz y le pasa el texto al agente', async () => {
+    const { svc, chat, client, transcriber } = setup();
+    await svc.handleWebhook(webhook(voiceNote()));
+    expect(client.downloadMedia).toHaveBeenCalledWith('MEDIA1');
+    expect(transcriber.transcribe).toHaveBeenCalledWith(Buffer.from('ogg'), 'audio/ogg; codecs=opus');
+    expect(chat.handleMessage).toHaveBeenCalledWith({ agentId: 'agent_1', userId: '573001112233', messageText: 'Quiero saber el precio' });
+    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?');
+  });
+
+  it('si el audio no se puede descargar o transcribir, pide que lo escriba sin llamar al agente', async () => {
+    const descarga = setup();
+    descarga.client.downloadMedia.mockRejectedValueOnce(new Error('404'));
+    await descarga.svc.handleWebhook(webhook(voiceNote('a2')));
+    expect(descarga.chat.handleMessage).not.toHaveBeenCalled();
+    expect(descarga.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE);
+
+    const silencio = setup();
+    silencio.transcriber.transcribe.mockResolvedValueOnce('');
+    await silencio.svc.handleWebhook(webhook(voiceNote('a3')));
+    expect(silencio.chat.handleMessage).not.toHaveBeenCalled();
+    expect(silencio.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE);
+  });
+
+  it('a una imagen responde que por ahora solo lee texto y notas de voz, sin llamar al agente', async () => {
     const { svc, chat, client } = setup();
-    await svc.handleWebhook(webhook({ from: '573001112233', id: 'a1', type: 'audio', audio: { id: 'm' } }));
+    await svc.handleWebhook(webhook({ from: '573001112233', id: 'i1', type: 'image', image: { id: 'm' } }));
     expect(chat.handleMessage).not.toHaveBeenCalled();
+    expect(client.downloadMedia).not.toHaveBeenCalled();
     expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', UNSUPPORTED_MESSAGE);
   });
 

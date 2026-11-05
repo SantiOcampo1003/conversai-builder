@@ -4,6 +4,14 @@ import { OutboundFile } from '../common/types/agent.types';
 
 const DEFAULT_GRAPH_VERSION = 'v25.0';
 
+/** Tope de los audios de WhatsApp (16 MB); también queda bajo el límite de 25 MB de la transcripción. */
+export const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+
+export interface DownloadedMedia {
+  data: Buffer;
+  mimeType: string;
+}
+
 /** Envío de mensajes por la Cloud API oficial de WhatsApp (Graph API de Meta). */
 @Injectable()
 export class WhatsAppCloudClient {
@@ -46,6 +54,22 @@ export class WhatsAppCloudClient {
     await this.request('POST', `${encodeURIComponent(wabaId)}/subscribed_apps`);
   }
 
+  /**
+   * Descarga un archivo recibido (audio, imagen…): GET /{media_id} da una URL temporal (5 min)
+   * que también exige el token.
+   */
+  async downloadMedia(mediaId: string): Promise<DownloadedMedia> {
+    const info = await this.request('GET', encodeURIComponent(mediaId));
+    if (!info?.url) throw new BadGatewayException('WhatsApp (Meta) no devolvió la URL del archivo');
+    if (Number(info.file_size) > MAX_MEDIA_BYTES) throw new Error(`Archivo demasiado grande (${info.file_size} bytes)`);
+
+    const res = await fetch(info.url, { headers: { Authorization: `Bearer ${this.token()}` }, signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new BadGatewayException(`WhatsApp (Meta) respondió ${res.status} al descargar el archivo`);
+    const data = Buffer.from(await res.arrayBuffer());
+    if (data.length > MAX_MEDIA_BYTES) throw new Error(`Archivo demasiado grande (${data.length} bytes)`);
+    return { data, mimeType: String(info.mime_type ?? res.headers.get('content-type') ?? '') };
+  }
+
   private async send(phoneNumberId: string, message: Record<string, unknown>): Promise<void> {
     await this.request('POST', `${encodeURIComponent(phoneNumberId)}/messages`, {
       messaging_product: 'whatsapp',
@@ -54,10 +78,15 @@ export class WhatsAppCloudClient {
     });
   }
 
-  private async request(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<any> {
+  private token(): string {
     // Piloto: un solo token (número de prueba). Con Embedded Signup cada línea tendrá su propio token cifrado.
     const token = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
     if (!token) throw new Error('Falta configurar WHATSAPP_ACCESS_TOKEN en el servidor');
+    return token;
+  }
+
+  private async request(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<any> {
+    const token = this.token();
     const version = this.config.get<string>('META_GRAPH_VERSION') || DEFAULT_GRAPH_VERSION;
     // Solo para pruebas locales contra un servidor simulado; en producción no se define
     const base = (this.config.get<string>('META_GRAPH_BASE_URL') || 'https://graph.facebook.com').replace(/\/$/, '');

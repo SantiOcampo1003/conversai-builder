@@ -10,6 +10,8 @@ export interface InboundMessage {
   type: string;
   /** Texto a pasarle al agente; null si el tipo de mensaje no se procesa. */
   text: string | null;
+  /** ID del archivo en Meta para las notas de voz y audios (se descarga y se transcribe). */
+  mediaId: string | null;
   profileName: string | null;
 }
 
@@ -59,6 +61,7 @@ export function extractInboundMessages(payload: any): InboundMessage[] {
           messageId: message.id,
           type: message.type ?? 'unknown',
           text: textOf(message),
+          mediaId: message.type === 'audio' ? (message.audio?.id ?? null) : null,
           profileName: names.get(message.from) ?? null,
         });
       }

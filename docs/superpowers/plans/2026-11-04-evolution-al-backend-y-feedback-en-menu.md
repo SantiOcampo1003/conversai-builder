@@ -328,8 +328,8 @@ Desde la Fase 1 de la API oficial, el backend atiende WhatsApp de punta a punta 
 
 ## Mejoras para líneas por la API oficial (Fase 3)
 
-- **"Escribiendo…":** enviar `typing_indicator: { type: "text" }` junto con el `status: "read"` al recibir el mensaje (permiso `whatsapp_business_messaging`; dura hasta 25 s o hasta la respuesta).
-- **Audio entrante:** `GET /{media_id}` → URL temporal (5 min) → descarga con el token → transcripción con Whisper en el backend → texto al agente.
+- ✅ **"Escribiendo…"** (PR #33): enviar `typing_indicator: { type: "text" }` junto con el `status: "read"` al recibir el mensaje (permiso `whatsapp_business_messaging`; dura hasta 25 s o hasta la respuesta).
+- ✅ **Audio entrante:** `GET /{media_id}` → URL temporal (5 min) → descarga con el token → transcripción con `gpt-4o-mini-transcribe` (configurable con `OPENAI_TRANSCRIBE_MODEL`) → texto al agente. AAC y AMR no se pueden transcribir: se pide escribirlo. Pendiente: cobrar la transcripción en los tokens del cliente.
 - **Conversiones de anuncios de clic a WhatsApp:** guardar el `ctwa_clid` del `referral` que trae el webhook y enviar los eventos del agente (Lead, Purchase) por la API de Conversiones para mensajes de negocios (`action_source: business_messaging`, `messaging_channel: whatsapp`) con el token de la conexión del cliente, en lugar del pixel + token manual de `meta_ads_config`. Requiere `whatsapp_business_manage_events` con acceso avanzado: **segunda App Review**, separada de la de `whatsapp_business_messaging` y `whatsapp_business_management`.
 
 ## Fuera de alcance (anotado para después)
