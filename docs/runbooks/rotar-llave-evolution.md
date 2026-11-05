@@ -30,9 +30,10 @@ Cada paso que toca producción se ejecuta con confirmación de quien opera.
 ## 2. Frontend (Vercel)
 
 1. El mismo merge despliega el frontend.
-2. En Vercel → Project → Settings → Environment Variables: **borrar** `VITE_EVOLUTION_API_URL`,
-   `VITE_EVOLUTION_API_KEY` y `VITE_EVOLUTION_WEBHOOK_URL`. Confirmar que `VITE_BACKEND_CHAT_URL`
-   apunta al backend. Redesplegar.
+2. El build puede leer `conversai-builder/.env.production` (versionado; este PR solo le quita las
+   `VITE_EVOLUTION_*`). En Vercel → Project → Settings → Environment Variables: **borrar**
+   `VITE_EVOLUTION_API_URL`, `VITE_EVOLUTION_API_KEY` y `VITE_EVOLUTION_WEBHOOK_URL` si existen, y
+   confirmar que `VITE_BACKEND_CHAT_URL` apunta al backend. Redesplegar.
 3. Node: Vercel toma `engines.node = 24.x` del `package.json`; confirmar en el log del build.
 4. Verificar que el bundle publicado ya no tiene la llave (sin imprimirla):
    ```bash
