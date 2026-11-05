@@ -326,6 +326,12 @@ Desde la Fase 1 de la API oficial, el backend atiende WhatsApp de punta a punta 
 
 **Cómo:** migrar línea por línea cambiando la URL del webhook de cada instancia de Evolution; mantener el workflow de n8n hasta que la última línea esté migrada y luego desactivarlo.
 
+## Mejoras para líneas por la API oficial (Fase 3)
+
+- **"Escribiendo…":** enviar `typing_indicator: { type: "text" }` junto con el `status: "read"` al recibir el mensaje (permiso `whatsapp_business_messaging`; dura hasta 25 s o hasta la respuesta).
+- **Audio entrante:** `GET /{media_id}` → URL temporal (5 min) → descarga con el token → transcripción con Whisper en el backend → texto al agente.
+- **Conversiones de anuncios de clic a WhatsApp:** guardar el `ctwa_clid` del `referral` que trae el webhook y enviar los eventos del agente (Lead, Purchase) por la API de Conversiones para mensajes de negocios (`action_source: business_messaging`, `messaging_channel: whatsapp`) con el token de la conexión del cliente, en lugar del pixel + token manual de `meta_ads_config`. Requiere `whatsapp_business_manage_events` con acceso avanzado: **segunda App Review**, separada de la de `whatsapp_business_messaging` y `whatsapp_business_management`.
+
 ## Fuera de alcance (anotado para después)
 
 - Recibir `CONNECTION_UPDATE` de Evolution en tiempo real: hoy cada instancia tiene un solo webhook y apunta a n8n. Si hace falta, se agrega un cron en el backend con `@nestjs/schedule` que llame a `listAndSync` por cliente.
