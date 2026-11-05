@@ -24,9 +24,9 @@ INSERT INTO public.clients (
   NOW(),
   NOW()
 )
-ON CONFLICT (id) DO NOTHING
+ON CONFLICT (id) DO NOTHING;
 -- 2. Comentario sobre el cliente
-COMMENT ON TABLE public.clients IS 'Clientes de la plataforma. El cliente 00000000-0000-0000-0000-000000000000 es la cuenta del super admin.'
+COMMENT ON TABLE public.clients IS 'Clientes de la plataforma. El cliente 00000000-0000-0000-0000-000000000000 es la cuenta del super admin.';
 -- 3. Crear balance de tokens para super admin (ilimitado = 1,000,000)
 INSERT INTO public.token_balances (
   id,
@@ -45,7 +45,7 @@ INSERT INTO public.token_balances (
   NOW(),
   NOW()
 )
-ON CONFLICT (client_id) DO NOTHING
+ON CONFLICT (client_id) DO NOTHING;
 -- 4. Transacción de bienvenida de tokens
 INSERT INTO public.token_transactions (
   id,
@@ -64,7 +64,7 @@ INSERT INTO public.token_transactions (
   'completed',
   NOW()
 )
-ON CONFLICT (id) DO NOTHING
+ON CONFLICT (id) DO NOTHING;
 -- ============================================================
 -- PASO MANUAL: Crear usuario de autenticación
 -- ============================================================
