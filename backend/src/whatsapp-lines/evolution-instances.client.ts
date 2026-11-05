@@ -1,6 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EvolutionState } from './line-state';
+
+// Mensajes exactos de Evolution v2 cuando la instancia no existe
+const INSTANCE_MISSING = /^The ".+" instance does not exist$|^Instance ".+" not found$/;
+
+/** Mensaje legible de una respuesta de error de Evolution. */
+function evolutionMessage(text: string): string {
+  try {
+    const body = JSON.parse(text);
+    const msg = body?.response?.message ?? body?.message ?? body?.error;
+    return (Array.isArray(msg) ? msg.join(', ') : String(msg ?? text)).slice(0, 200);
+  } catch {
+    return text.slice(0, 200) || 'sin detalle';
+  }
+}
 
 /** Gestión de instancias (líneas) en Evolution. La llave global solo vive en el servidor. */
 @Injectable()
@@ -55,12 +69,12 @@ export class EvolutionInstancesClient {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
-    if (res.status === 404 && 'notFound' in opts) return opts.notFound;
-    if (!res.ok) {
-      const text = (await res.text()).slice(0, 200);
-      throw new Error(`WhatsApp (Evolution) no respondió: ${res.status}${text ? ` ${text}` : ''}`);
-    }
     const text = await res.text();
+    // Solo el 404 propio de Evolution significa "la instancia no existe"; otro 404 es configuración rota
+    if (res.status === 404 && 'notFound' in opts && INSTANCE_MISSING.test(evolutionMessage(text))) return opts.notFound;
+    if (!res.ok) {
+      throw new BadGatewayException(`WhatsApp (Evolution) respondió ${res.status}: ${evolutionMessage(text)}`);
+    }
     return text ? JSON.parse(text) : null;
   }
 }

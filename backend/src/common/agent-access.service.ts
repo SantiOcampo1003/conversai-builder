@@ -32,11 +32,16 @@ export class AgentAccessService {
    * `manage` = admin del cliente. El super admin puede todo. Lanza 401/403 si no.
    */
   async assertClientAccess(authHeader: string | undefined, clientId: string, level: 'view' | 'manage'): Promise<void> {
+    const granted = await this.clientAccessLevel(authHeader, clientId);
+    if (level === 'manage' && granted !== 'manage') throw new ForbiddenException('No tienes permiso sobre este cliente');
+  }
+
+  /** Nivel de acceso del usuario sobre el cliente; 403 si no es miembro. */
+  async clientAccessLevel(authHeader: string | undefined, clientId: string): Promise<'view' | 'manage'> {
     const members = await this.resolveMembers(authHeader);
-    const allowed = members.some(
-      (m) => m.role === 'super_admin' || (m.client_id === clientId && (level === 'view' || m.role === 'admin')),
-    );
-    if (!allowed) throw new ForbiddenException('No tienes permiso sobre este cliente');
+    if (members.some((m) => m.role === 'super_admin' || (m.client_id === clientId && m.role === 'admin'))) return 'manage';
+    if (members.some((m) => m.client_id === clientId)) return 'view';
+    throw new ForbiddenException('No tienes permiso sobre este cliente');
   }
 
   /** Membresías activas del usuario dueño del JWT. */

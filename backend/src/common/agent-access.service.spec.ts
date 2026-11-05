@@ -82,3 +82,17 @@ describe('AgentAccessService.assertCanManage (sin cambios)', () => {
     await expect(svc.assertCanManage('Bearer valid', 'agent-1')).resolves.toBeUndefined();
   });
 });
+
+describe('AgentAccessService.clientAccessLevel', () => {
+  it('admin del cliente → manage; otro rol del cliente → view', async () => {
+    const admin = new AgentAccessService(makeDb({ userId: 'u', members: [{ client_id: CLIENT, role: 'admin' }] }));
+    const viewer = new AgentAccessService(makeDb({ userId: 'u', members: [{ client_id: CLIENT, role: 'viewer' }] }));
+    await expect(admin.clientAccessLevel('Bearer valid', CLIENT)).resolves.toBe('manage');
+    await expect(viewer.clientAccessLevel('Bearer valid', CLIENT)).resolves.toBe('view');
+  });
+
+  it('sin membresía en el cliente → 403', async () => {
+    const svc = new AgentAccessService(makeDb({ userId: 'u', members: [{ client_id: OTHER, role: 'admin' }] }));
+    await expect(svc.clientAccessLevel('Bearer valid', CLIENT)).rejects.toThrow(ForbiddenException);
+  });
+});

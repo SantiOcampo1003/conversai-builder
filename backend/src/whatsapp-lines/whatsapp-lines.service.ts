@@ -55,9 +55,12 @@ export class WhatsAppLinesService {
     };
   }
 
-  /** Estado de una línea; si sigue esperando escaneo trae el QR vigente (Evolution lo cambia cada ~45 s). */
-  async refresh(lineId: string): Promise<WhatsAppLineRow> {
-    return this.sync(await this.get(lineId), true);
+  /**
+   * Estado de una línea. Con `renewQr` (solo para quien gestiona la línea) y si sigue esperando
+   * escaneo, trae el QR vigente: Evolution lo cambia cada ~45 s.
+   */
+  async refresh(lineId: string, renewQr: boolean): Promise<WhatsAppLineRow> {
+    return this.sync(await this.get(lineId), renewQr);
   }
 
   async create(clientId: string, lineName: string): Promise<WhatsAppLineRow> {

@@ -126,7 +126,7 @@ describe('WhatsAppLinesService.refresh', () => {
     const { db, rows } = makeDb([line({ status: 'pending', phone_number: null, qr_code: 'data:image/png;base64,VIEJO' })]);
     const evo = makeEvolution({ inst1: 'connecting' });
     const svc = new WhatsAppLinesService(db, evo, config);
-    const updated = await svc.refresh('l1');
+    const updated = await svc.refresh('l1', true);
     expect(evo.connect).toHaveBeenCalledWith('inst1');
     expect(updated.qr_code).toBe('data:image/png;base64,NUEVO');
     expect(rows[0].status).toBe('pending');
@@ -135,7 +135,16 @@ describe('WhatsAppLinesService.refresh', () => {
   it('línea conectada → no pide QR', async () => {
     const { db } = makeDb([line()]);
     const evo = makeEvolution({ inst1: 'open' });
-    await new WhatsAppLinesService(db, evo, config).refresh('l1');
+    await new WhatsAppLinesService(db, evo, config).refresh('l1', true);
+    expect(evo.connect).not.toHaveBeenCalled();
+  });
+});
+
+describe('WhatsAppLinesService.refresh sin permiso de gestión', () => {
+  it('no pide QR nuevo a Evolution', async () => {
+    const { db } = makeDb([line({ status: 'pending', qr_code: 'data:image/png;base64,VIEJO' })]);
+    const evo = makeEvolution({ inst1: 'connecting' });
+    await new WhatsAppLinesService(db, evo, config).refresh('l1', false);
     expect(evo.connect).not.toHaveBeenCalled();
   });
 });

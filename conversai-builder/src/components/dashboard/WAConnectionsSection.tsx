@@ -144,14 +144,12 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Polling encadenado: la siguiente consulta sale cuando terminó la anterior, sin acumular peticiones
+  const pollRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; until: number }>({ timer: null, until: 0 })
 
   const stopPolling = () => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
-    pollRef.current = null
-    pollTimeoutRef.current = null
+    if (pollRef.current.timer) clearTimeout(pollRef.current.timer)
+    pollRef.current = { timer: null, until: 0 }
   }
 
   useEffect(() => stopPolling, [])
@@ -186,22 +184,24 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
   // Evolution renueva el QR cada ~45 s: en cada vuelta se pinta el vigente hasta que conecte
   const startPolling = (lineId: string) => {
     stopPolling()
-    pollRef.current = setInterval(async () => {
+    // Tope de 3 minutos; la tarjeta de la línea sigue mostrando el QR después
+    pollRef.current.until = Date.now() + 180000
+
+    const tick = async () => {
       try {
         const line = await refreshLine(lineId)
         if (line.status === 'connected') {
           handleClose()
           onLineAdded()
-        } else if (line.qr_code) {
-          setQrCode(line.qr_code)
+          return
         }
+        if (line.qr_code) setQrCode(line.qr_code)
       } catch (err) {
         console.error('Polling error:', err)
       }
-    }, 5000)
-
-    // Tope de 3 minutos; la tarjeta de la línea sigue mostrando el QR después
-    pollTimeoutRef.current = setTimeout(stopPolling, 180000)
+      if (pollRef.current.until > Date.now()) pollRef.current.timer = setTimeout(tick, 5000)
+    }
+    pollRef.current.timer = setTimeout(tick, 5000)
   }
 
   const handleClose = () => {
@@ -324,8 +324,18 @@ export function WAConnectionsSection() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const { toast } = useToast()
 
+  // Cliente que se está mostrando: una respuesta de otro cliente (cambio de impersonalización) se descarta
+  const shownClientRef = useRef(clientId)
+  useEffect(() => {
+    if (shownClientRef.current === clientId) return
+    shownClientRef.current = clientId
+    setLines([])
+    setLoading(true)
+  }, [clientId])
+
   const loadData = useCallback(async () => {
     if (!user || !clientId || loadingClientId) return
+    const isStale = () => shownClientRef.current !== clientId
 
     // Sin setLoading(true): el skeleton es solo para la primera carga; recargar es silencioso
     try {
@@ -337,6 +347,7 @@ export function WAConnectionsSection() {
         .eq('status', 'active')
         .maybeSingle()
 
+      if (isStale()) return
       setIsAdmin(membership?.role === 'super_admin' || membership?.role === 'admin')
 
       // Obtener límite de líneas usando clientId del hook
@@ -346,6 +357,7 @@ export function WAConnectionsSection() {
         .eq('id', clientId)
         .single()
 
+      if (isStale()) return
       if (clientData) {
         setMaxLines(clientData.max_whatsapp_lines)
       }
@@ -353,6 +365,7 @@ export function WAConnectionsSection() {
       // Líneas con el estado real de WhatsApp (el backend consulta Evolution)
       try {
         const { lines: synced, syncError: warning } = await listLines(clientId)
+        if (isStale()) return
         setLines([...synced].reverse())
         setSyncError(warning)
       } catch (err) {
@@ -362,6 +375,7 @@ export function WAConnectionsSection() {
           .select('*')
           .eq('client_id', clientId)
           .order('created_at', { ascending: false })
+        if (isStale()) return
         setLines((linesData as WhatsAppLine[]) || [])
         setSyncError('No se pudo consultar el estado de WhatsApp; se muestra el último estado guardado.')
         console.error('Error syncing lines:', err)
@@ -374,11 +388,12 @@ export function WAConnectionsSection() {
         .eq('client_id', clientId)
         .order('business_name')
 
+      if (isStale()) return
       setAgents(agentsData || [])
+      setLoading(false)
     } catch (err) {
       console.error('Error loading data:', err)
-    } finally {
-      setLoading(false)
+      if (!isStale()) setLoading(false)
     }
   }, [user, clientId, loadingClientId])
 
@@ -389,19 +404,29 @@ export function WAConnectionsSection() {
   const replaceLine = (updated: WhatsAppLine) =>
     setLines((prev) => prev.map((line) => (line.id === updated.id ? updated : line)))
 
-  // Líneas esperando escaneo: cada 5 s se pide su estado y el QR vigente, sin recargar la vista
+  // Líneas esperando escaneo: cada 5 s (después de terminar la consulta anterior) se pide su estado
+  // y el QR vigente, sin recargar la vista
   const pendingIds = lines.filter((line) => line.status === 'pending').map((line) => line.id).join(',')
   useEffect(() => {
     if (!pendingIds) return
     const ids = pendingIds.split(',')
-    const interval = setInterval(() => {
-      ids.forEach((id) => {
-        refreshLine(id)
-          .then(replaceLine)
-          .catch((err) => console.error('Polling error:', err))
-      })
-    }, 5000)
-    return () => clearInterval(interval)
+    let timer: ReturnType<typeof setTimeout>
+    let active = true
+    const tick = async () => {
+      await Promise.all(
+        ids.map((id) =>
+          refreshLine(id)
+            .then((line) => active && setLines((prev) => prev.map((l) => (l.id === line.id ? line : l))))
+            .catch((err) => console.error('Polling error:', err)),
+        ),
+      )
+      if (active) timer = setTimeout(tick, 5000)
+    }
+    timer = setTimeout(tick, 5000)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
   }, [pendingIds])
 
   const showError = (title: string, err: unknown) =>
