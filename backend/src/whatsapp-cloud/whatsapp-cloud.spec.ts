@@ -1,5 +1,6 @@
 import { BadGatewayException, ForbiddenException } from '@nestjs/common';
-import { createHmac } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
+import { encryptToken } from './token-crypto';
 import { WhatsAppCloudClient } from './whatsapp-cloud.client';
 import { WhatsAppCloudController } from './whatsapp-cloud.controller';
 import { AUDIO_FAILED_MESSAGE, UNSUPPORTED_MESSAGE, WhatsAppCloudService } from './whatsapp-cloud.service';
@@ -98,6 +99,36 @@ describe('WhatsAppCloudClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('con el token de la línea lo usa en lugar del de la plataforma', async () => {
+    const fetchMock = ok();
+    await new WhatsAppCloudClient(config).sendText('PN1', '57300', 'Hola', 'tok-cliente');
+    expect(((fetchMock.mock.calls[0][1] as RequestInit).headers as any).Authorization).toBe('Bearer tok-cliente');
+  });
+
+  it('cambia el code de Embedded Signup por el token sin enviar ningún token', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{"access_token":"EAAG-nuevo","token_type":"bearer"}', { status: 200 }));
+    const client = new WhatsAppCloudClient({ get: (k: string) => ({ ...env, META_APP_ID: 'APP1' })[k] } as any);
+    await expect(client.exchangeCode('CODE 1')).resolves.toBe('EAAG-nuevo');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://graph.facebook.com/v25.0/oauth/access_token?client_id=APP1&client_secret=secret&code=CODE+1');
+    expect((init.headers as any).Authorization).toBeUndefined();
+  });
+
+  it('sin META_APP_ID no intenta el intercambio', async () => {
+    const fetchMock = ok();
+    await expect(new WhatsAppCloudClient(config).exchangeCode('C')).rejects.toThrow(/META_APP_ID/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('registra el número con su PIN y el token del cliente', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{"success":true}', { status: 200 }));
+    await new WhatsAppCloudClient(config).registerPhoneNumber('PN7', '123456', 'tok-cliente');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://graph.facebook.com/v25.0/PN7/register');
+    expect(JSON.parse(init.body as string)).toEqual({ messaging_product: 'whatsapp', pin: '123456' });
+    expect((init.headers as any).Authorization).toBe('Bearer tok-cliente');
+  });
+
   it('sin token configurado no llama a Meta', async () => {
     const fetchMock = ok();
     await expect(new WhatsAppCloudClient({ get: () => undefined } as any).sendText('PN1', '57300', 'x')).rejects.toThrow(
@@ -130,6 +161,9 @@ const webhook = (msg: any, phoneNumberId = 'PN1') => ({
 });
 const text = (body: string, id = 'wamid.1') => ({ from: '573001112233', id, type: 'text', text: { body } });
 
+const KEY = randomBytes(32).toString('base64');
+const keyConfig = { get: (k: string) => (k === 'WHATSAPP_TOKEN_ENCRYPTION_KEY' ? KEY : undefined) } as any;
+
 function setup(line: any = { meta_phone_number_id: 'PN1', agent_id: 'agent_1' }, reply: any = { output: 'Hola, ¿en qué te ayudo?' }) {
   const chat = { handleMessage: jest.fn(async () => reply) } as any;
   const client = {
@@ -139,7 +173,7 @@ function setup(line: any = { meta_phone_number_id: 'PN1', agent_id: 'agent_1' },
     downloadMedia: jest.fn(async () => ({ data: Buffer.from('ogg'), mimeType: 'audio/ogg; codecs=opus' })),
   } as any;
   const transcriber = { transcribe: jest.fn(async () => 'Quiero saber el precio') } as any;
-  return { svc: new WhatsAppCloudService(makeDb(line), chat, client, transcriber), chat, client, transcriber };
+  return { svc: new WhatsAppCloudService(makeDb(line), chat, client, transcriber, keyConfig), chat, client, transcriber };
 }
 
 describe('WhatsAppCloudService.handleWebhook', () => {
@@ -147,7 +181,15 @@ describe('WhatsAppCloudService.handleWebhook', () => {
     const { svc, chat, client } = setup();
     await svc.handleWebhook(webhook(text('Hola')));
     expect(chat.handleMessage).toHaveBeenCalledWith({ agentId: 'agent_1', userId: '573001112233', messageText: 'Hola' });
-    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?');
+    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?', undefined);
+  });
+
+  it('una línea de Embedded Signup responde con el token de su cliente (descifrado)', async () => {
+    const line = { meta_phone_number_id: 'PN1', agent_id: 'agent_1', meta_access_token_encrypted: encryptToken('tok-cliente', KEY) };
+    const { svc, client } = setup(line);
+    await svc.handleWebhook(webhook(text('Hola', 'wamid.es')));
+    expect(client.markReadAndTyping).toHaveBeenCalledWith('PN1', 'wamid.es', 'tok-cliente');
+    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?', 'tok-cliente');
   });
 
   it('envía los archivos que decidió el agente después del texto', async () => {
@@ -155,7 +197,7 @@ describe('WhatsAppCloudService.handleWebhook', () => {
     const { svc, client } = setup(undefined, { output: 'Te envío el menú', files: [file] });
     await svc.handleWebhook(webhook(text('menú')));
     expect(client.sendText).toHaveBeenCalledTimes(1);
-    expect(client.sendFile).toHaveBeenCalledWith('PN1', '573001112233', file);
+    expect(client.sendFile).toHaveBeenCalledWith('PN1', '573001112233', file, undefined);
   });
 
   it('procesa una sola vez un mensaje que Meta reenvía', async () => {
@@ -170,10 +212,10 @@ describe('WhatsAppCloudService.handleWebhook', () => {
   it('transcribe la nota de voz y le pasa el texto al agente', async () => {
     const { svc, chat, client, transcriber } = setup();
     await svc.handleWebhook(webhook(voiceNote()));
-    expect(client.downloadMedia).toHaveBeenCalledWith('MEDIA1');
+    expect(client.downloadMedia).toHaveBeenCalledWith('MEDIA1', undefined);
     expect(transcriber.transcribe).toHaveBeenCalledWith(Buffer.from('ogg'), 'audio/ogg; codecs=opus');
     expect(chat.handleMessage).toHaveBeenCalledWith({ agentId: 'agent_1', userId: '573001112233', messageText: 'Quiero saber el precio' });
-    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?');
+    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', 'Hola, ¿en qué te ayudo?', undefined);
   });
 
   it('si el audio no se puede descargar o transcribir, pide que lo escriba sin llamar al agente', async () => {
@@ -181,13 +223,13 @@ describe('WhatsAppCloudService.handleWebhook', () => {
     descarga.client.downloadMedia.mockRejectedValueOnce(new Error('404'));
     await descarga.svc.handleWebhook(webhook(voiceNote('a2')));
     expect(descarga.chat.handleMessage).not.toHaveBeenCalled();
-    expect(descarga.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE);
+    expect(descarga.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE, undefined);
 
     const silencio = setup();
     silencio.transcriber.transcribe.mockResolvedValueOnce('');
     await silencio.svc.handleWebhook(webhook(voiceNote('a3')));
     expect(silencio.chat.handleMessage).not.toHaveBeenCalled();
-    expect(silencio.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE);
+    expect(silencio.client.sendText).toHaveBeenCalledWith('PN1', '573001112233', AUDIO_FAILED_MESSAGE, undefined);
   });
 
   it('a una imagen responde que por ahora solo lee texto y notas de voz, sin llamar al agente', async () => {
@@ -195,7 +237,7 @@ describe('WhatsAppCloudService.handleWebhook', () => {
     await svc.handleWebhook(webhook({ from: '573001112233', id: 'i1', type: 'image', image: { id: 'm' } }));
     expect(chat.handleMessage).not.toHaveBeenCalled();
     expect(client.downloadMedia).not.toHaveBeenCalled();
-    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', UNSUPPORTED_MESSAGE);
+    expect(client.sendText).toHaveBeenCalledWith('PN1', '573001112233', UNSUPPORTED_MESSAGE, undefined);
   });
 
   it('ignora en silencio las reacciones', async () => {

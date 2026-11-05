@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomInt } from 'crypto';
 import { DatabaseService } from '../database/database.service';
+import { encryptToken } from '../whatsapp-cloud/token-crypto';
 import { WhatsAppCloudClient } from '../whatsapp-cloud/whatsapp-cloud.client';
 import { EvolutionInstancesClient } from './evolution-instances.client';
 import { extractQr, LineStatus, mapEvolutionState, phoneFromOwnerJid } from './line-state';
@@ -28,6 +30,11 @@ export interface WhatsAppLineRow {
   updated_at: string;
 }
 
+/** Columnas que se devuelven al navegador: nunca el token cifrado de Meta. */
+const LINE_COLUMNS =
+  'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, qr_code, last_connected_at, error_message, created_at, updated_at';
+
+export const DUPLICATED_NUMBER_MESSAGE = 'Ese número ya está conectado a una línea.';
 export const NOT_FOUND_MESSAGE = 'La instancia ya no existe en WhatsApp. Elimina la línea y crea una nueva.';
 export const SYNC_ERROR_MESSAGE = 'No se pudo consultar WhatsApp; se muestra el último estado guardado.';
 export const META_MANAGED_MESSAGE = 'Esta línea usa la API oficial de WhatsApp y se gestiona desde Meta.';
@@ -50,7 +57,7 @@ export class WhatsAppLinesService {
   /** Líneas del cliente con su estado sincronizado. Si Evolution falla se devuelve lo guardado. */
   async listAndSync(clientId: string): Promise<{ lines: WhatsAppLineRow[]; syncError: string | null }> {
     const { data, error } = await this.table()
-      .select('*')
+      .select(LINE_COLUMNS)
       .eq('client_id', clientId)
       .order('created_at', { ascending: true });
     if (error) throw new BadRequestException(error.message);
@@ -83,7 +90,7 @@ export class WhatsAppLinesService {
 
     const { data, error } = await this.table()
       .insert({ client_id: clientId, line_name: lineName.trim(), evolution_instance_name: instanceName, status: 'pending', qr_code: qr })
-      .select()
+      .select(LINE_COLUMNS)
       .single();
     if (error) {
       // No dejar instancias huérfanas en Evolution (p. ej. límite de líneas alcanzado)
@@ -118,12 +125,77 @@ export class WhatsAppLinesService {
         status: 'connected',
         last_connected_at: new Date().toISOString(),
       })
-      .select()
+      .select(LINE_COLUMNS)
       .single();
-    if (error) {
-      const duplicated = /whatsapp_lines_meta_phone_number_id_key|duplicate key/i.test(error.message);
-      throw new BadRequestException(duplicated ? 'Ese número ya está conectado a una línea.' : error.message);
+    if (error) throw new BadRequestException(insertErrorMessage(error.message));
+    return data as WhatsAppLineRow;
+  }
+
+  /**
+   * "Conectar con Facebook": el cliente conectó su propio número en el popup de Embedded Signup.
+   * Cambia el code por el token de su cuenta, suscribe la app a su WABA, registra el número en la
+   * Cloud API y guarda la línea con el token cifrado.
+   */
+  async connectWithEmbeddedSignup(
+    clientId: string,
+    lineName: string,
+    code: string,
+    phoneNumberId: string,
+    wabaId: string,
+  ): Promise<WhatsAppLineRow> {
+    // Antes de gastar el code (sirve una sola vez): llave configurada, cupo de líneas y número libre
+    const encryptionKey = this.config.get<string>('WHATSAPP_TOKEN_ENCRYPTION_KEY');
+    try {
+      encryptToken('prueba', encryptionKey);
+    } catch (e) {
+      throw new InternalServerErrorException((e as Error).message);
     }
+    await this.assertLineAvailable(clientId);
+    const { data: existing } = await this.table().select('id').eq('meta_phone_number_id', phoneNumberId).maybeSingle();
+    if (existing) throw new BadRequestException(DUPLICATED_NUMBER_MESSAGE);
+
+    let token: string;
+    try {
+      token = await this.cloud.exchangeCode(code);
+    } catch (e) {
+      throw new BadRequestException(`Facebook no confirmó la conexión; vuelve a intentarlo. (${(e as Error).message})`);
+    }
+
+    try {
+      await this.cloud.subscribeApp(wabaId, token);
+    } catch (e) {
+      throw new BadRequestException(`No se pudo activar la recepción de mensajes de tu cuenta de WhatsApp: ${(e as Error).message}`);
+    }
+
+    const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    try {
+      await this.cloud.registerPhoneNumber(phoneNumberId, pin, token);
+    } catch (e) {
+      const message = (e as Error).message;
+      if (!/already registered|ya est[aá] registrado/i.test(message)) {
+        throw new BadRequestException(
+          `Meta no permitió activar el número. Si tiene verificación en dos pasos, desactívala en WhatsApp Manager y vuelve a intentarlo. (${message})`,
+        );
+      }
+    }
+
+    const phone = await this.cloud.getPhoneNumber(phoneNumberId, token);
+    const { data, error } = await this.table()
+      .insert({
+        client_id: clientId,
+        line_name: lineName.trim(),
+        provider: 'meta_cloud',
+        evolution_instance_name: null,
+        meta_phone_number_id: phoneNumberId,
+        meta_waba_id: wabaId,
+        meta_access_token_encrypted: encryptToken(token, encryptionKey),
+        phone_number: phone.displayPhoneNumber.replace(/\D/g, ''),
+        status: 'connected',
+        last_connected_at: new Date().toISOString(),
+      })
+      .select(LINE_COLUMNS)
+      .single();
+    if (error) throw new BadRequestException(insertErrorMessage(error.message));
     return data as WhatsAppLineRow;
   }
 
@@ -186,14 +258,27 @@ export class WhatsAppLinesService {
     return row;
   }
 
+  /** El mismo límite que aplica la base al crear líneas (trigger check_whatsapp_lines_limit). */
+  private async assertLineAvailable(clientId: string): Promise<void> {
+    const [{ count }, { data: client }] = await Promise.all([
+      this.table().select('id', { count: 'exact', head: true }).eq('client_id', clientId),
+      this.db.getAdminClient().from('clients').select('max_whatsapp_lines').eq('id', clientId).maybeSingle(),
+    ]);
+    const max = (client as { max_whatsapp_lines: number | null } | null)?.max_whatsapp_lines;
+    if (!client) throw new NotFoundException('Cliente no encontrado');
+    if (max != null && (count ?? 0) >= max) {
+      throw new BadRequestException(`Llegaste al límite de ${max} líneas de WhatsApp. Elimina una línea o amplía tu plan.`);
+    }
+  }
+
   private async get(lineId: string): Promise<WhatsAppLineRow> {
-    const { data } = await this.table().select('*').eq('id', lineId).maybeSingle();
+    const { data } = await this.table().select(LINE_COLUMNS).eq('id', lineId).maybeSingle();
     if (!data) throw new NotFoundException('Línea no encontrada');
     return data as WhatsAppLineRow;
   }
 
   private async update(lineId: string, patch: Partial<WhatsAppLineRow>): Promise<WhatsAppLineRow> {
-    const { data, error } = await this.table().update(patch).eq('id', lineId).select().single();
+    const { data, error } = await this.table().update(patch).eq('id', lineId).select(LINE_COLUMNS).single();
     if (error) throw new BadRequestException(error.message);
     return data as WhatsAppLineRow;
   }
@@ -201,4 +286,8 @@ export class WhatsAppLinesService {
   private table() {
     return this.db.getAdminClient().from('whatsapp_lines');
   }
+}
+
+function insertErrorMessage(message: string): string {
+  return /whatsapp_lines_meta_phone_number_id_key|duplicate key/i.test(message) ? DUPLICATED_NUMBER_MESSAGE : message;
 }

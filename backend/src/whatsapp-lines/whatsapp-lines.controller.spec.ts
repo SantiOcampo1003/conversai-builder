@@ -97,3 +97,22 @@ describe('WhatsAppLinesController.createMeta', () => {
     expect(lines.createMetaLine).not.toHaveBeenCalled();
   });
 });
+
+describe('WhatsAppLinesController.embeddedSignup', () => {
+  const dto = { clientId: 'c1', lineName: 'Ventas', code: 'CODE', phoneNumberId: '1234567', wabaId: '7654321' };
+
+  it('exige poder gestionar el cliente y conecta la línea', async () => {
+    const access = { assertClientAccess: jest.fn(async () => undefined) } as any;
+    const lines = { connectWithEmbeddedSignup: jest.fn(async () => ({ id: 'l1' })) } as any;
+    await expect(new WhatsAppLinesController(lines, access).embeddedSignup('Bearer t', dto)).resolves.toEqual({ line: { id: 'l1' } });
+    expect(access.assertClientAccess).toHaveBeenCalledWith('Bearer t', 'c1', 'manage');
+    expect(lines.connectWithEmbeddedSignup).toHaveBeenCalledWith('c1', 'Ventas', 'CODE', '1234567', '7654321');
+  });
+
+  it('sin permiso de gestión no conecta nada', async () => {
+    const access = { assertClientAccess: jest.fn(async () => { throw new ForbiddenException('No tienes permiso sobre este cliente'); }) } as any;
+    const lines = { connectWithEmbeddedSignup: jest.fn() } as any;
+    await expect(new WhatsAppLinesController(lines, access).embeddedSignup('Bearer t', dto)).rejects.toThrow(ForbiddenException);
+    expect(lines.connectWithEmbeddedSignup).not.toHaveBeenCalled();
+  });
+});
