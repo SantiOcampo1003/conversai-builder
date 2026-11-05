@@ -129,6 +129,64 @@ describe('WhatsAppCloudClient', () => {
     expect((init.headers as any).Authorization).toBe('Bearer tok-cliente');
   });
 
+  const withApp = () => new WhatsAppCloudClient({ get: (k: string) => ({ ...env, META_APP_ID: 'APP1' })[k] } as any);
+  const respond = (json: unknown) =>
+    jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify(json), { status: 200 }));
+
+  it('debugToken lee vencimiento y WABAs autorizadas con el token de la app', async () => {
+    const fetchMock = respond({
+      data: {
+        expires_at: 1790000000,
+        granular_scopes: [
+          { scope: 'whatsapp_business_management', target_ids: ['W1', 'W2', 'W1'] },
+          { scope: 'whatsapp_business_messaging', target_ids: ['W1'] },
+        ],
+      },
+    });
+    await expect(withApp().debugToken('tok cli')).resolves.toEqual({ expiresAt: new Date(1790000000 * 1000), wabaIds: ['W1', 'W2'] });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://graph.facebook.com/v25.0/debug_token?input_token=tok+cli');
+    expect((init.headers as any).Authorization).toBe('Bearer APP1|secret');
+  });
+
+  it('debugToken con expires_at 0 (no vence) devuelve expiresAt null', async () => {
+    respond({ data: { expires_at: 0 } });
+    await expect(withApp().debugToken('t')).resolves.toEqual({ expiresAt: null, wabaIds: [] });
+  });
+
+  it('listPhoneNumbers devuelve los números de la WABA con el token del cliente', async () => {
+    const fetchMock = respond({ data: [{ id: 'PN9', display_phone_number: '+57 300 111 2233' }] });
+    await expect(withApp().listPhoneNumbers('W1', 'tok-cliente')).resolves.toEqual([{ id: 'PN9', displayPhoneNumber: '+57 300 111 2233' }]);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://graph.facebook.com/v25.0/W1/phone_numbers?fields=id,display_phone_number');
+    expect((init.headers as any).Authorization).toBe('Bearer tok-cliente');
+  });
+
+  it('refreshToken pide un token nuevo de 60 días sin header Authorization', async () => {
+    const fetchMock = respond({ access_token: 'new', expires_in: 5184000 });
+    const before = Date.now();
+    const result = await withApp().refreshToken('old');
+    expect(result.accessToken).toBe('new');
+    expect(result.expiresAt!.getTime()).toBeGreaterThanOrEqual(before + 5184000 * 1000);
+    expect(result.expiresAt!.getTime()).toBeLessThanOrEqual(Date.now() + 5184000 * 1000);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/v25.0/oauth/access_token?');
+    const query = new URLSearchParams(url.split('?')[1]);
+    expect(query.get('grant_type')).toBe('fb_exchange_token');
+    expect(query.get('client_id')).toBe('APP1');
+    expect(query.get('client_secret')).toBe('secret');
+    expect(query.get('fb_exchange_token')).toBe('old');
+    expect(query.get('set_token_expires_in_60_days')).toBe('true');
+    expect((init.headers as any).Authorization).toBeUndefined();
+  });
+
+  it('debugToken y refreshToken sin META_APP_ID no llaman a Meta', async () => {
+    const fetchMock = ok();
+    await expect(new WhatsAppCloudClient(config).debugToken('t')).rejects.toThrow(/META_APP_ID/);
+    await expect(new WhatsAppCloudClient(config).refreshToken('t')).rejects.toThrow(/META_APP_ID/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('sin token configurado no llama a Meta', async () => {
     const fetchMock = ok();
     await expect(new WhatsAppCloudClient({ get: () => undefined } as any).sendText('PN1', '57300', 'x')).rejects.toThrow(
