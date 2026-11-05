@@ -45,7 +45,7 @@ export class WhatsAppCloudService {
       return;
     }
 
-    await this.client.markRead(phoneNumberId, message.messageId);
+    await this.client.markReadAndTyping(phoneNumberId, message.messageId);
     if (message.text === null) {
       await this.client.sendText(phoneNumberId, from, UNSUPPORTED_MESSAGE);
       return;

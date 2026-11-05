@@ -96,3 +96,14 @@ describe('AgentAccessService.clientAccessLevel', () => {
     await expect(svc.clientAccessLevel('Bearer valid', CLIENT)).rejects.toThrow(ForbiddenException);
   });
 });
+
+describe('AgentAccessService.assertSuperAdmin', () => {
+  it('super_admin → ok', async () => {
+    const svc = new AgentAccessService(makeDb({ userId: 'u', members: [{ client_id: OTHER, role: 'super_admin' }] }));
+    await expect(svc.assertSuperAdmin('Bearer valid')).resolves.toBeUndefined();
+  });
+  it('admin de un cliente → 403', async () => {
+    const svc = new AgentAccessService(makeDb({ userId: 'u', members: [{ client_id: CLIENT, role: 'admin' }] }));
+    await expect(svc.assertSuperAdmin('Bearer valid')).rejects.toThrow(ForbiddenException);
+  });
+});

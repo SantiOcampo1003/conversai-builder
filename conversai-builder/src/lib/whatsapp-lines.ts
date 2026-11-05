@@ -51,6 +51,13 @@ export const listLines = (clientId: string) =>
 export const createLine = async (clientId: string, lineName: string) =>
   (await call<{ line: WhatsAppLine }>('POST', '', { clientId, lineName })).line
 
+/**
+ * Línea por la API oficial con un número que administra la plataforma (p. ej. el número de prueba de Meta).
+ * Solo super admin: usa el token de la plataforma.
+ */
+export const createMetaLine = async (clientId: string, lineName: string, phoneNumberId: string, wabaId?: string) =>
+  (await call<{ line: WhatsAppLine }>('POST', '/meta', { clientId, lineName, phoneNumberId, ...(wabaId && { wabaId }) })).line
+
 /** Estado actual; si la línea espera escaneo trae el QR vigente. */
 export const refreshLine = async (id: string) => (await call<{ line: WhatsAppLine }>('POST', `/${id}/refresh`)).line
 

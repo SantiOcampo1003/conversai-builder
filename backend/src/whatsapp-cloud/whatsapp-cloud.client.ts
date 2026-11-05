@@ -25,16 +25,36 @@ export class WhatsAppCloudClient {
     });
   }
 
-  /** Marca el mensaje como leído (doble check azul). Es cortesía: los errores se ignoran. */
-  async markRead(phoneNumberId: string, messageId: string): Promise<void> {
-    await this.post(phoneNumberId, { messaging_product: 'whatsapp', status: 'read', message_id: messageId }).catch(() => undefined);
+  /** Marca el mensaje como leído y muestra "escribiendo…" mientras el agente responde (hasta 25 s). Errores ignorados. */
+  async markReadAndTyping(phoneNumberId: string, messageId: string): Promise<void> {
+    await this.request('POST', `${encodeURIComponent(phoneNumberId)}/messages`, {
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: messageId,
+      typing_indicator: { type: 'text' },
+    }).catch(() => undefined);
   }
 
-  private send(phoneNumberId: string, message: Record<string, unknown>): Promise<void> {
-    return this.post(phoneNumberId, { messaging_product: 'whatsapp', recipient_type: 'individual', ...message });
+  /** Datos del número; falla si no existe o el token no tiene acceso a su cuenta. */
+  async getPhoneNumber(phoneNumberId: string): Promise<{ displayPhoneNumber: string; verifiedName: string | null }> {
+    const data = await this.request('GET', `${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name`);
+    return { displayPhoneNumber: data.display_phone_number, verifiedName: data.verified_name ?? null };
   }
 
-  private async post(phoneNumberId: string, body: Record<string, unknown>): Promise<void> {
+  /** Suscribe esta app a los webhooks de la cuenta de WhatsApp Business (necesario para recibir sus mensajes). */
+  async subscribeApp(wabaId: string): Promise<void> {
+    await this.request('POST', `${encodeURIComponent(wabaId)}/subscribed_apps`);
+  }
+
+  private async send(phoneNumberId: string, message: Record<string, unknown>): Promise<void> {
+    await this.request('POST', `${encodeURIComponent(phoneNumberId)}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      ...message,
+    });
+  }
+
+  private async request(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<any> {
     // Piloto: un solo token (número de prueba). Con Embedded Signup cada línea tendrá su propio token cifrado.
     const token = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
     if (!token) throw new Error('Falta configurar WHATSAPP_ACCESS_TOKEN en el servidor');
@@ -42,14 +62,14 @@ export class WhatsAppCloudClient {
     // Solo para pruebas locales contra un servidor simulado; en producción no se define
     const base = (this.config.get<string>('META_GRAPH_BASE_URL') || 'https://graph.facebook.com').replace(/\/$/, '');
 
-    const res = await fetch(`${base}/${version}/${encodeURIComponent(phoneNumberId)}/messages`, {
-      method: 'POST',
+    const res = await fetch(`${base}/${version}/${path}`, {
+      method,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
-    if (res.ok) return;
     const text = await res.text();
+    if (res.ok) return text ? JSON.parse(text) : null;
     let detail = text.slice(0, 200);
     try {
       detail = JSON.parse(text)?.error?.message ?? detail;

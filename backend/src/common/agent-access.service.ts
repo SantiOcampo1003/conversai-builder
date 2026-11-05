@@ -36,6 +36,12 @@ export class AgentAccessService {
     if (level === 'manage' && granted !== 'manage') throw new ForbiddenException('No tienes permiso sobre este cliente');
   }
 
+  /** Solo el super admin de la plataforma. Lanza 401/403 si no. */
+  async assertSuperAdmin(authHeader: string | undefined): Promise<void> {
+    const members = await this.resolveMembers(authHeader);
+    if (!members.some((m) => m.role === 'super_admin')) throw new ForbiddenException('Solo el super admin puede hacer esto');
+  }
+
   /** Nivel de acceso del usuario sobre el cliente; 403 si no es miembro. */
   async clientAccessLevel(authHeader: string | undefined, clientId: string): Promise<'view' | 'manage'> {
     const members = await this.resolveMembers(authHeader);

@@ -77,3 +77,23 @@ describe('CreateLineDto', () => {
     expect(errors).toHaveLength(1);
   });
 });
+
+describe('WhatsAppLinesController.createMeta', () => {
+  it('exige super admin y crea la línea oficial', async () => {
+    const access = { assertSuperAdmin: jest.fn(async () => undefined) } as any;
+    const lines = { createMetaLine: jest.fn(async () => ({ id: 'l1' })) } as any;
+    const ctrl = new WhatsAppLinesController(lines, access);
+    await expect(ctrl.createMeta('Bearer t', { clientId: 'c1', lineName: 'Prueba', phoneNumberId: '123456', wabaId: '987654' })).resolves.toEqual({ line: { id: 'l1' } });
+    expect(access.assertSuperAdmin).toHaveBeenCalledWith('Bearer t');
+    expect(lines.createMetaLine).toHaveBeenCalledWith('c1', 'Prueba', '123456', '987654');
+  });
+
+  it('sin super admin no crea nada', async () => {
+    const access = { assertSuperAdmin: jest.fn(async () => { throw new ForbiddenException('Solo el super admin puede hacer esto'); }) } as any;
+    const lines = { createMetaLine: jest.fn() } as any;
+    await expect(new WhatsAppLinesController(lines, access).createMeta('Bearer t', { clientId: 'c1', lineName: 'X', phoneNumberId: '123456' })).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(lines.createMetaLine).not.toHaveBeenCalled();
+  });
+});
