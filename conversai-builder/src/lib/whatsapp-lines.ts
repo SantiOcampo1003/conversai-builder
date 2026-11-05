@@ -58,6 +58,16 @@ export const createLine = async (clientId: string, lineName: string) =>
 export const createMetaLine = async (clientId: string, lineName: string, phoneNumberId: string, wabaId?: string) =>
   (await call<{ line: WhatsAppLine }>('POST', '/meta', { clientId, lineName, phoneNumberId, ...(wabaId && { wabaId }) })).line
 
+/**
+ * "Conectar con Facebook": el cliente conectó su propio número en el popup de Meta. El backend cambia el code
+ * por el token de su cuenta (lo guarda cifrado), activa el número y crea la línea.
+ */
+export const connectWithEmbeddedSignup = async (
+  clientId: string,
+  lineName: string,
+  signup: { code: string; phoneNumberId: string; wabaId: string },
+) => (await call<{ line: WhatsAppLine }>('POST', '/meta/embedded-signup', { clientId, lineName, ...signup })).line
+
 /** Estado actual; si la línea espera escaneo trae el QR vigente. */
 export const refreshLine = async (id: string) => (await call<{ line: WhatsAppLine }>('POST', `/${id}/refresh`)).line
 
