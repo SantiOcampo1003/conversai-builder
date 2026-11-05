@@ -480,6 +480,33 @@ function ConnectFacebookDialog({ clientId, onLineAdded, canAddMore }: ConnectMet
   )
 }
 
+/** Días antes del vencimiento en que se avisa (la renovación automática empieza 15 días antes). */
+const META_TOKEN_WARN_DAYS = 7
+
+/** Estado del acceso a Meta de una línea conectada con Facebook: falló la renovación o está por vencer. */
+function MetaTokenNotice({ line }: { line: WhatsAppLine }) {
+  if (line.provider !== 'meta_cloud') return null
+  if (line.meta_token_refresh_error) {
+    return (
+      <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-2 mt-2 space-y-1">
+        <p>{line.meta_token_refresh_error}</p>
+        <p>
+          Para reconectar: elimina esta línea y vuelve a usar <strong>Conectar con Facebook</strong> con el mismo número;
+          luego asígnale de nuevo el agente.
+        </p>
+      </div>
+    )
+  }
+  if (!line.meta_token_expires_at) return null
+  const expiresAt = new Date(line.meta_token_expires_at)
+  if (expiresAt.getTime() - Date.now() > META_TOKEN_WARN_DAYS * 86_400_000) return null
+  return (
+    <div className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded p-2 mt-2">
+      El acceso a Meta vence el {expiresAt.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}; se renovará automáticamente.
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export function WAConnectionsSection() {
   const { user } = useAuth()
@@ -543,7 +570,7 @@ export function WAConnectionsSection() {
         const { data: linesData } = await supabase
           .from('whatsapp_lines')
           .select(
-            'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, qr_code, last_connected_at, error_message, created_at, updated_at',
+            'id, client_id, line_name, phone_number, agent_id, status, provider, evolution_instance_name, meta_phone_number_id, meta_waba_id, meta_token_expires_at, meta_token_refresh_error, qr_code, last_connected_at, error_message, created_at, updated_at',
           )
           .eq('client_id', clientId)
           .order('created_at', { ascending: false })
@@ -865,6 +892,8 @@ export function WAConnectionsSection() {
                           {line.error_message}
                         </div>
                       )}
+
+                      <MetaTokenNotice line={line} />
 
                       {line.provider !== 'meta_cloud' && line.status === 'pending' && line.qr_code && (
                         <div className="mt-3 p-3 bg-muted/50 rounded-lg border border-border">
