@@ -28,9 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
-      setUser(session?.user ?? null)
+      // Al volver a la pestaña Supabase refresca el token y entrega un objeto `user` nuevo aunque
+      // sea la misma persona. Conservar el anterior evita que todas las vistas recarguen con skeleton.
+      const next = session?.user ?? null
+      setUser(prev => (prev?.id === next?.id && event !== 'USER_UPDATED' ? prev : next))
       setLoading(false)
     })
 

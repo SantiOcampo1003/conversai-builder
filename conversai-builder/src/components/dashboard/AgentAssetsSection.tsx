@@ -54,7 +54,7 @@ export function AgentAssetsSection({ agentId, clientId }: Props) {
   const [caption, setCaption] = useState('')
 
   const load = useCallback(async () => {
-    setLoading(true)
+    // Solo la primera carga muestra skeleton (estado inicial); recargar tras guardar es silencioso
     try {
       // Las fotos de producto se gestionan en la sección Productos
       const rows = await listAgentAssets(agentId)

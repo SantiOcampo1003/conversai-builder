@@ -57,7 +57,7 @@ export function GoogleSheetsSection({ agentId }: { agentId: string }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    // Solo la primera carga muestra skeleton (estado inicial); recargar tras guardar es silencioso
     try {
       const base = backendBase()
       if (base) {
