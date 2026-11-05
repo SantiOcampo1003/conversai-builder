@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AgentAccessService } from '../common/agent-access.service';
 import { WhatsAppLineRow, WhatsAppLinesService } from './whatsapp-lines.service';
 
@@ -9,6 +9,14 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export class CreateLineDto {
   @Matches(UUID_SHAPE, { message: 'clientId inválido' }) clientId: string;
   @IsString() @IsNotEmpty() @MaxLength(100) lineName: string;
+}
+
+/** Línea por la API oficial con un número que administra la plataforma (solo super admin). */
+export class CreateMetaLineDto {
+  @Matches(UUID_SHAPE, { message: 'clientId inválido' }) clientId: string;
+  @IsString() @IsNotEmpty() @MaxLength(100) lineName: string;
+  @Matches(/^\d{5,30}$/, { message: 'Phone Number ID inválido' }) phoneNumberId: string;
+  @IsOptional() @Matches(/^\d{5,30}$/, { message: 'WABA ID inválido' }) wabaId?: string;
 }
 
 /** El QR solo lo ve quien gestiona la línea: con él cualquiera podría vincular su propio teléfono. */
@@ -34,6 +42,13 @@ export class WhatsAppLinesController {
   async create(@Headers('authorization') auth: string | undefined, @Body() dto: CreateLineDto) {
     await this.access.assertClientAccess(auth, dto.clientId, 'manage');
     return { line: await this.lines.create(dto.clientId, dto.lineName) };
+  }
+
+  /** Usa el token de la plataforma: por eso es solo para el super admin (un cliente no debe enlazar números de Fractal). */
+  @Post('meta')
+  async createMeta(@Headers('authorization') auth: string | undefined, @Body() dto: CreateMetaLineDto) {
+    await this.access.assertSuperAdmin(auth);
+    return { line: await this.lines.createMetaLine(dto.clientId, dto.lineName, dto.phoneNumberId, dto.wabaId ?? null) };
   }
 
   @Post(':id/refresh')

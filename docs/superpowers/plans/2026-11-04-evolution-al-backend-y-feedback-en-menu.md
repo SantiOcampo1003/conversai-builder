@@ -314,6 +314,24 @@ Node 20 (`backend/Dockerfile: FROM node:20-alpine`, en producción v20.20.2) est
 
 Evolution regenera el QR cada ~45 s; hoy el panel muestra solo el primero y por eso escanear tarde falla sin dejar rastro en Evolution. `refresh(lineId)` en una línea `pending` que sigue en `connecting` pide `GET /instance/connect/:name`, guarda el QR nuevo en `qr_code` y lo devuelve; el polling del frontend pinta el QR que llega.
 
+## Mejora acordada: deprecar n8n en la atención de WhatsApp
+
+Desde la Fase 1 de la API oficial, el backend atiende WhatsApp de punta a punta (webhook de Meta → `ChatService` → Graph API) sin n8n. Las líneas por QR todavía pasan por el workflow v2 de n8n (Evolution → n8n → `/api/chat/message` → Evolution).
+
+**Objetivo:** que Evolution envíe su webhook al backend (`/api/whatsapp-evolution/webhook`) y un solo módulo atienda las dos clases de línea con la misma lógica:
+- normalización del mensaje, deduplicación, transcripción de audio (Whisper) y envío de archivos;
+- envío por el proveedor de la línea (`evolution` o `meta_cloud`).
+
+**Por qué:** mayor control y estándares (tests, revisión de código, tipos), mejor rendimiento (menos saltos), un solo lugar para errores y métricas. También elimina problemas de n8n ya detectados: SQL interpolado en `Execute Query`, reacciones que fallan con 400, errores por mensajes propios (`fromMe`) y la llave de Evolution escrita en nodos.
+
+**Cómo:** migrar línea por línea cambiando la URL del webhook de cada instancia de Evolution; mantener el workflow de n8n hasta que la última línea esté migrada y luego desactivarlo.
+
+## Mejoras para líneas por la API oficial (Fase 3)
+
+- **"Escribiendo…":** enviar `typing_indicator: { type: "text" }` junto con el `status: "read"` al recibir el mensaje (permiso `whatsapp_business_messaging`; dura hasta 25 s o hasta la respuesta).
+- **Audio entrante:** `GET /{media_id}` → URL temporal (5 min) → descarga con el token → transcripción con Whisper en el backend → texto al agente.
+- **Conversiones de anuncios de clic a WhatsApp:** guardar el `ctwa_clid` del `referral` que trae el webhook y enviar los eventos del agente (Lead, Purchase) por la API de Conversiones para mensajes de negocios (`action_source: business_messaging`, `messaging_channel: whatsapp`) con el token de la conexión del cliente, en lugar del pixel + token manual de `meta_ads_config`. Requiere `whatsapp_business_manage_events` con acceso avanzado: **segunda App Review**, separada de la de `whatsapp_business_messaging` y `whatsapp_business_management`.
+
 ## Fuera de alcance (anotado para después)
 
 - Recibir `CONNECTION_UPDATE` de Evolution en tiempo real: hoy cada instancia tiene un solo webhook y apunta a n8n. Si hace falta, se agrega un cron en el backend con `@nestjs/schedule` que llame a `listAndSync` por cliente.

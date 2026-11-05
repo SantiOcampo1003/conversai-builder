@@ -75,7 +75,7 @@ const line = (over: any = {}) => ({
 describe('WhatsAppLinesService.listAndSync', () => {
   it('línea connected y Evolution close → la guarda disconnected', async () => {
     const { db, rows } = makeDb([line()]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'close' }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'close' }), config, {} as any);
     const { lines, syncError } = await svc.listAndSync('c1');
     expect(lines[0].status).toBe('disconnected');
     expect(rows[0].status).toBe('disconnected');
@@ -84,7 +84,7 @@ describe('WhatsAppLinesService.listAndSync', () => {
 
   it('línea disconnected y Evolution open → connected, fecha, sin QR y con teléfono', async () => {
     const { db, rows } = makeDb([line({ status: 'disconnected', phone_number: null, qr_code: 'viejo' })]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config, {} as any);
     await svc.listAndSync('c1');
     expect(rows[0]).toMatchObject({ status: 'connected', qr_code: null, phone_number: '573219385629' });
     expect(rows[0].last_connected_at).toEqual(expect.any(String));
@@ -92,14 +92,14 @@ describe('WhatsAppLinesService.listAndSync', () => {
 
   it('instancia inexistente en Evolution → error con mensaje', async () => {
     const { db, rows } = makeDb([line()]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'not_found' }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'not_found' }), config, {} as any);
     await svc.listAndSync('c1');
     expect(rows[0]).toMatchObject({ status: 'error', error_message: NOT_FOUND_MESSAGE });
   });
 
   it('Evolution caído → no toca la base y devuelve el último estado con aviso', async () => {
     const { db, updates } = makeDb([line()]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: new Error('timeout') }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: new Error('timeout') }), config, {} as any);
     const { lines, syncError } = await svc.listAndSync('c1');
     expect(updates).toHaveLength(0);
     expect(lines[0].status).toBe('connected');
@@ -108,14 +108,14 @@ describe('WhatsAppLinesService.listAndSync', () => {
 
   it('sin cambios de estado → no escribe', async () => {
     const { db, updates } = makeDb([line()]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config, {} as any);
     await svc.listAndSync('c1');
     expect(updates).toHaveLength(0);
   });
 
   it('al salir de error limpia el mensaje', async () => {
     const { db, rows } = makeDb([line({ status: 'error', error_message: NOT_FOUND_MESSAGE })]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({ inst1: 'open' }), config, {} as any);
     await svc.listAndSync('c1');
     expect(rows[0]).toMatchObject({ status: 'connected', error_message: null });
   });
@@ -125,7 +125,7 @@ describe('WhatsAppLinesService.refresh', () => {
   it('línea pending todavía sin escanear → guarda el QR nuevo que entrega Evolution', async () => {
     const { db, rows } = makeDb([line({ status: 'pending', phone_number: null, qr_code: 'data:image/png;base64,VIEJO' })]);
     const evo = makeEvolution({ inst1: 'connecting' });
-    const svc = new WhatsAppLinesService(db, evo, config);
+    const svc = new WhatsAppLinesService(db, evo, config, {} as any);
     const updated = await svc.refresh('l1', true);
     expect(evo.connect).toHaveBeenCalledWith('inst1');
     expect(updated.qr_code).toBe('data:image/png;base64,NUEVO');
@@ -135,7 +135,7 @@ describe('WhatsAppLinesService.refresh', () => {
   it('línea conectada → no pide QR', async () => {
     const { db } = makeDb([line()]);
     const evo = makeEvolution({ inst1: 'open' });
-    await new WhatsAppLinesService(db, evo, config).refresh('l1', true);
+    await new WhatsAppLinesService(db, evo, config, {} as any).refresh('l1', true);
     expect(evo.connect).not.toHaveBeenCalled();
   });
 });
@@ -144,7 +144,7 @@ describe('WhatsAppLinesService.refresh sin permiso de gestión', () => {
   it('no pide QR nuevo a Evolution', async () => {
     const { db } = makeDb([line({ status: 'pending', qr_code: 'data:image/png;base64,VIEJO' })]);
     const evo = makeEvolution({ inst1: 'connecting' });
-    await new WhatsAppLinesService(db, evo, config).refresh('l1', false);
+    await new WhatsAppLinesService(db, evo, config, {} as any).refresh('l1', false);
     expect(evo.connect).not.toHaveBeenCalled();
   });
 });
@@ -153,7 +153,7 @@ describe('WhatsAppLinesService acciones', () => {
   it('create: instancia con nombre único y webhook configurado, fila pending con QR', async () => {
     const { db, rows } = makeDb([]);
     const evo = makeEvolution({});
-    const created = await new WhatsAppLinesService(db, evo, config).create('c1', '  Ventas  ');
+    const created = await new WhatsAppLinesService(db, evo, config, {} as any).create('c1', '  Ventas  ');
     const [name, webhook] = evo.create.mock.calls[0];
     expect(name).toMatch(/^line_\d+_[a-z0-9]{9}$/);
     expect(webhook).toBe('https://n8n/webhook/x');
@@ -164,7 +164,7 @@ describe('WhatsAppLinesService acciones', () => {
   it('create: si la base rechaza (límite de líneas) borra la instancia y devuelve el mensaje', async () => {
     const { db } = makeDb([], { insertError: 'Límite de 3 líneas de WhatsApp alcanzado para este cliente' });
     const evo = makeEvolution({});
-    const svc = new WhatsAppLinesService(db, evo, config);
+    const svc = new WhatsAppLinesService(db, evo, config, {} as any);
     await expect(svc.create('c1', 'Ventas')).rejects.toThrow(
       new BadRequestException('Límite de 3 líneas de WhatsApp alcanzado para este cliente'),
     );
@@ -173,14 +173,14 @@ describe('WhatsAppLinesService acciones', () => {
 
   it('reconnect: guarda QR nuevo y deja la línea pending', async () => {
     const { db, rows } = makeDb([line({ status: 'disconnected' })]);
-    await new WhatsAppLinesService(db, makeEvolution({}), config).reconnect('l1');
+    await new WhatsAppLinesService(db, makeEvolution({}), config, {} as any).reconnect('l1');
     expect(rows[0]).toMatchObject({ status: 'pending', qr_code: 'data:image/png;base64,NUEVO' });
   });
 
   it('logout: cierra sesión y limpia teléfono y QR', async () => {
     const { db, rows } = makeDb([line()]);
     const evo = makeEvolution({});
-    await new WhatsAppLinesService(db, evo, config).logout('l1');
+    await new WhatsAppLinesService(db, evo, config, {} as any).logout('l1');
     expect(evo.logout).toHaveBeenCalledWith('inst1');
     expect(rows[0]).toMatchObject({ status: 'disconnected', phone_number: null, qr_code: null });
   });
@@ -188,14 +188,14 @@ describe('WhatsAppLinesService acciones', () => {
   it('remove: borra en Evolution y luego la fila', async () => {
     const { db, rows } = makeDb([line()]);
     const evo = makeEvolution({});
-    await new WhatsAppLinesService(db, evo, config).remove('l1');
+    await new WhatsAppLinesService(db, evo, config, {} as any).remove('l1');
     expect(evo.remove).toHaveBeenCalledWith('inst1');
     expect(rows).toHaveLength(0);
   });
 
   it('clientIdOf: línea inexistente → 404', async () => {
     const { db } = makeDb([]);
-    await expect(new WhatsAppLinesService(db, makeEvolution({}), config).clientIdOf('nope')).rejects.toThrow(
+    await expect(new WhatsAppLinesService(db, makeEvolution({}), config, {} as any).clientIdOf('nope')).rejects.toThrow(
       'Línea no encontrada',
     );
   });
@@ -208,7 +208,7 @@ describe('WhatsAppLinesService con líneas de la API oficial (meta_cloud)', () =
   it('listAndSync no consulta Evolution para líneas meta_cloud', async () => {
     const { db } = makeDb([metaLine()]);
     const evo = makeEvolution({});
-    const { lines, syncError } = await new WhatsAppLinesService(db, evo, config).listAndSync('c1');
+    const { lines, syncError } = await new WhatsAppLinesService(db, evo, config, {} as any).listAndSync('c1');
     expect(evo.connectionState).not.toHaveBeenCalled();
     expect(lines[0].status).toBe('connected');
     expect(syncError).toBeNull();
@@ -217,14 +217,14 @@ describe('WhatsAppLinesService con líneas de la API oficial (meta_cloud)', () =
   it('refresh devuelve la línea sin tocar Evolution', async () => {
     const { db } = makeDb([metaLine()]);
     const evo = makeEvolution({});
-    await new WhatsAppLinesService(db, evo, config).refresh('l1', true);
+    await new WhatsAppLinesService(db, evo, config, {} as any).refresh('l1', true);
     expect(evo.connectionState).not.toHaveBeenCalled();
     expect(evo.connect).not.toHaveBeenCalled();
   });
 
   it('reconnect y logout no aplican: se gestionan desde Meta', async () => {
     const { db } = makeDb([metaLine()]);
-    const svc = new WhatsAppLinesService(db, makeEvolution({}), config);
+    const svc = new WhatsAppLinesService(db, makeEvolution({}), config, {} as any);
     await expect(svc.reconnect('l1')).rejects.toThrow(BadRequestException);
     await expect(svc.logout('l1')).rejects.toThrow(BadRequestException);
   });
@@ -232,8 +232,52 @@ describe('WhatsAppLinesService con líneas de la API oficial (meta_cloud)', () =
   it('remove borra la fila sin llamar a Evolution', async () => {
     const { db, rows } = makeDb([metaLine()]);
     const evo = makeEvolution({});
-    await new WhatsAppLinesService(db, evo, config).remove('l1');
+    await new WhatsAppLinesService(db, evo, config, {} as any).remove('l1');
     expect(evo.remove).not.toHaveBeenCalled();
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('WhatsAppLinesService.createMetaLine', () => {
+  const cloud = (over: any = {}) => ({
+    getPhoneNumber: jest.fn(async () => ({ displayPhoneNumber: '+1 555-157-1956', verifiedName: 'Test Number' })),
+    subscribeApp: jest.fn(async () => undefined),
+    ...over,
+  });
+
+  it('valida el número con Meta, suscribe la app a la WABA y crea la línea conectada', async () => {
+    const { db, rows } = makeDb([]);
+    const c = cloud();
+    const created = await new WhatsAppLinesService(db, makeEvolution({}), config, c as any).createMetaLine('c1', ' Prueba Meta ', 'PN9', 'WABA9');
+    expect(c.getPhoneNumber).toHaveBeenCalledWith('PN9');
+    expect(c.subscribeApp).toHaveBeenCalledWith('WABA9');
+    expect(created).toMatchObject({
+      client_id: 'c1', line_name: 'Prueba Meta', provider: 'meta_cloud', meta_phone_number_id: 'PN9',
+      meta_waba_id: 'WABA9', phone_number: '15551571956', status: 'connected', evolution_instance_name: null,
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('sin WABA ID crea la línea sin suscribir', async () => {
+    const { db } = makeDb([]);
+    const c = cloud();
+    await new WhatsAppLinesService(db, makeEvolution({}), config, c as any).createMetaLine('c1', 'X', 'PN9', null);
+    expect(c.subscribeApp).not.toHaveBeenCalled();
+  });
+
+  it('si Meta no reconoce el número (o el token no tiene acceso) no crea nada', async () => {
+    const { db, rows } = makeDb([]);
+    const c = cloud({ getPhoneNumber: jest.fn(async () => { throw new Error('WhatsApp (Meta) respondió 400: Unsupported get request'); }) });
+    await expect(new WhatsAppLinesService(db, makeEvolution({}), config, c as any).createMetaLine('c1', 'X', 'BAD', null)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('si el número ya está conectado devuelve un mensaje claro', async () => {
+    const { db } = makeDb([], { insertError: 'duplicate key value violates unique constraint "whatsapp_lines_meta_phone_number_id_key"' });
+    await expect(new WhatsAppLinesService(db, makeEvolution({}), config, cloud() as any).createMetaLine('c1', 'X', 'PN9', null)).rejects.toThrow(
+      'Ese número ya está conectado a una línea.',
+    );
   });
 });

@@ -50,6 +50,33 @@ describe('WhatsAppCloudClient', () => {
     await expect(new WhatsAppCloudClient(config).sendText('PN1', '57300', 'x')).rejects.toThrow(/131047/);
   });
 
+  it('consulta los datos del número con GET /{phone_number_id}', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response('{"display_phone_number":"+1 555-157-1956","verified_name":"Test Number","id":"PN1"}', { status: 200 }));
+    await expect(new WhatsAppCloudClient(config).getPhoneNumber('PN1')).resolves.toEqual({ displayPhoneNumber: '+1 555-157-1956', verifiedName: 'Test Number' });
+    expect(fetchMock.mock.calls[0][0] as string).toContain('/v25.0/PN1?fields=display_phone_number,verified_name');
+  });
+
+  it('suscribe la app a la cuenta de WhatsApp con POST /{waba_id}/subscribed_apps', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{"success":true}', { status: 200 }));
+    await new WhatsAppCloudClient(config).subscribeApp('WABA1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://graph.facebook.com/v25.0/WABA1/subscribed_apps');
+    expect(init.method).toBe('POST');
+  });
+
+  it('marca como leído y muestra "escribiendo…" en la misma llamada', async () => {
+    const fetchMock = ok();
+    await new WhatsAppCloudClient(config).markReadAndTyping('PN1', 'wamid.9');
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: 'wamid.9',
+      typing_indicator: { type: 'text' },
+    });
+  });
+
   it('sin token configurado no llama a Meta', async () => {
     const fetchMock = ok();
     await expect(new WhatsAppCloudClient({ get: () => undefined } as any).sendText('PN1', '57300', 'x')).rejects.toThrow(
@@ -84,7 +111,7 @@ const text = (body: string, id = 'wamid.1') => ({ from: '573001112233', id, type
 
 function setup(line: any = { meta_phone_number_id: 'PN1', agent_id: 'agent_1' }, reply: any = { output: 'Hola, ¿en qué te ayudo?' }) {
   const chat = { handleMessage: jest.fn(async () => reply) } as any;
-  const client = { sendText: jest.fn(async () => undefined), sendFile: jest.fn(async () => undefined), markRead: jest.fn(async () => undefined) } as any;
+  const client = { sendText: jest.fn(async () => undefined), sendFile: jest.fn(async () => undefined), markReadAndTyping: jest.fn(async () => undefined) } as any;
   return { svc: new WhatsAppCloudService(makeDb(line), chat, client), chat, client };
 }
 

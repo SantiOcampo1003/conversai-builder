@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useClientContext } from '@/hooks/use-client-context'
+import { useIsSuperAdmin } from '@/hooks/use-is-super-admin'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 import {
   createLine,
+  createMetaLine,
   deleteLine,
   listLines,
   logoutLine,
@@ -312,6 +314,96 @@ function AddLineDialog({ clientId, onLineAdded, canAddMore }: AddLineDialogProps
   )
 }
 
+// ── Connect Official API Line Dialog (super admin) ─────────────────────────
+interface ConnectMetaLineDialogProps {
+  clientId: string
+  onLineAdded: () => void
+  canAddMore: boolean
+}
+
+/**
+ * Conecta un número que ya administra la plataforma en Meta (p. ej. el número de prueba). Solo super admin:
+ * los clientes conectarán su propio número con "Conectar con Facebook".
+ */
+function ConnectMetaLineDialog({ clientId, onLineAdded, canAddMore }: ConnectMetaLineDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [lineName, setLineName] = useState('')
+  const [phoneNumberId, setPhoneNumberId] = useState('')
+  const [wabaId, setWabaId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => {
+    setLineName('')
+    setPhoneNumberId('')
+    setWabaId('')
+    setError(null)
+  }
+
+  const handleConnect = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await createMetaLine(clientId, lineName.trim(), phoneNumberId.trim(), wabaId.trim() || undefined)
+      setOpen(false)
+      reset()
+      onLineAdded()
+    } catch (err) {
+      setError((err as Error).message || 'No se pudo conectar la línea')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const valid = lineName.trim() && /^\d{5,30}$/.test(phoneNumberId.trim()) && (!wabaId.trim() || /^\d{5,30}$/.test(wabaId.trim()))
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset() }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" disabled={!canAddMore}>
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          Conectar API oficial
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Conectar línea por la API oficial</DialogTitle>
+          <DialogDescription>
+            Para números que la plataforma ya administra en Meta (por ejemplo el número de prueba). Los datos están en
+            Meta for Developers → WhatsApp → Configuración de la API.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="meta-line-name">Nombre de la línea</Label>
+            <Input id="meta-line-name" placeholder="Ej: API oficial" value={lineName} onChange={(e) => setLineName(e.target.value)} disabled={loading} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meta-phone-id">Phone Number ID</Label>
+            <Input id="meta-phone-id" inputMode="numeric" placeholder="Ej: 1401068163093448" value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)} disabled={loading} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meta-waba-id">ID de la cuenta de WhatsApp (WABA) · opcional</Label>
+            <Input id="meta-waba-id" inputMode="numeric" placeholder="Ej: 2038937570421447" value={wabaId} onChange={(e) => setWabaId(e.target.value)} disabled={loading} />
+            <p className="text-xs text-muted-foreground">Si lo indicas, suscribimos la app a los mensajes de esa cuenta.</p>
+          </div>
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">{error}</div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>Cancelar</Button>
+          <Button onClick={handleConnect} disabled={loading || !valid}>
+            {loading ? (<><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Conectando...</>) : 'Conectar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export function WAConnectionsSection() {
   const { user } = useAuth()
@@ -322,6 +414,7 @@ export function WAConnectionsSection() {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const { isSuperAdmin } = useIsSuperAdmin()
   const { toast } = useToast()
 
   // Cliente que se está mostrando: una respuesta de otro cliente (cambio de impersonalización) se descarta
@@ -549,11 +642,16 @@ export function WAConnectionsSection() {
         </div>
 
         {isAdmin && clientId && (
-          <AddLineDialog
-            clientId={clientId}
-            onLineAdded={loadData}
-            canAddMore={canAddMore}
-          />
+          <div className="flex items-center gap-2">
+            {isSuperAdmin && (
+              <ConnectMetaLineDialog clientId={clientId} onLineAdded={loadData} canAddMore={canAddMore} />
+            )}
+            <AddLineDialog
+              clientId={clientId}
+              onLineAdded={loadData}
+              canAddMore={canAddMore}
+            />
+          </div>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
+import { WhatsAppCloudClient } from '../whatsapp-cloud/whatsapp-cloud.client';
 import { EvolutionInstancesClient } from './evolution-instances.client';
 import { extractQr, LineStatus, mapEvolutionState, phoneFromOwnerJid } from './line-state';
 
@@ -43,6 +44,7 @@ export class WhatsAppLinesService {
     private readonly db: DatabaseService,
     private readonly evolution: EvolutionInstancesClient,
     private readonly config: ConfigService,
+    private readonly cloud: WhatsAppCloudClient,
   ) {}
 
   /** Líneas del cliente con su estado sincronizado. Si Evolution falla se devuelve lo guardado. */
@@ -87,6 +89,40 @@ export class WhatsAppLinesService {
       // No dejar instancias huérfanas en Evolution (p. ej. límite de líneas alcanzado)
       await this.evolution.remove(instanceName).catch(() => undefined);
       throw new BadRequestException(error.message);
+    }
+    return data as WhatsAppLineRow;
+  }
+
+  /**
+   * Línea por la API oficial con un número que el token de la plataforma ya administra (p. ej. el número de prueba
+   * de Meta). Valida el número con Meta y, si se indica la WABA, suscribe la app a sus webhooks.
+   */
+  async createMetaLine(clientId: string, lineName: string, phoneNumberId: string, wabaId: string | null): Promise<WhatsAppLineRow> {
+    let phone: { displayPhoneNumber: string };
+    try {
+      phone = await this.cloud.getPhoneNumber(phoneNumberId);
+    } catch (e) {
+      throw new BadRequestException(`Meta no reconoce ese Phone Number ID o el token no tiene acceso: ${(e as Error).message}`);
+    }
+    if (wabaId) await this.cloud.subscribeApp(wabaId);
+
+    const { data, error } = await this.table()
+      .insert({
+        client_id: clientId,
+        line_name: lineName.trim(),
+        provider: 'meta_cloud',
+        evolution_instance_name: null,
+        meta_phone_number_id: phoneNumberId,
+        meta_waba_id: wabaId,
+        phone_number: phone.displayPhoneNumber.replace(/\D/g, ''),
+        status: 'connected',
+        last_connected_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (error) {
+      const duplicated = /whatsapp_lines_meta_phone_number_id_key|duplicate key/i.test(error.message);
+      throw new BadRequestException(duplicated ? 'Ese número ya está conectado a una línea.' : error.message);
     }
     return data as WhatsAppLineRow;
   }
