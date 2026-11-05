@@ -182,14 +182,23 @@ ON CONFLICT (client_id, auth_user_id) DO NOTHING;
 SET session_replication_role = default;
 
 -- 9. Lead de ejemplo capturado
-INSERT INTO public.leads (id, agent_id, name, phone, email, address, notes, status, source, created_at) VALUES
-(1, 'agent_dev_001', 'Ana Pérez', '+573009876543', 'ana@example.com', 'Carrera 7 #80-45', 'Interesada en pizza hawaiana', 'contacted', 'chat', NOW() - INTERVAL '2 hours')
-ON CONFLICT (id) DO NOTHING;
+-- Desde 20260307050000 los datos del contacto viven en additional_fields y customer_id es el número de WhatsApp
+INSERT INTO public.leads (id, agent_id, customer_id, additional_fields, notes, status, source, created_at) VALUES
+(
+  'dddddddd-dddd-dddd-dddd-dddddddddddd',
+  'agent_dev_001',
+  '573009876543',
+  '{"nombre": "Ana Pérez", "email": "ana@example.com", "direccion": "Carrera 7 #80-45"}'::jsonb,
+  'Interesada en pizza hawaiana',
+  'contacted',
+  'chat',
+  NOW() - INTERVAL '2 hours'
+)
+ON CONFLICT (agent_id, customer_id) DO NOTHING;
 
 -- 9. Resetear secuencias
 SELECT setval('public.agents_id_seq', GREATEST((SELECT MAX(id) FROM public.agents), 1));
 SELECT setval('public.chat_history_id_seq', GREATEST((SELECT MAX(id) FROM public.chat_history), 1));
-SELECT setval('public.leads_id_seq', GREATEST((SELECT MAX(id) FROM public.leads), 1));
 
 -- 10. Orden de servicio de ejemplo para el cliente de prueba
 INSERT INTO public.service_orders (id, service_id, client_id, custom_description, price_cop, price_usd, payment_status, service_status, created_at) VALUES
