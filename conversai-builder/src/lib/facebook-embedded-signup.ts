@@ -1,12 +1,13 @@
 /**
  * "Conectar con Facebook": Embedded Signup de WhatsApp (popup de Meta).
  * El popup devuelve un `code` (vale 30 s, una sola vez) y, por `postMessage`, los IDs del número y de la cuenta.
+ * Si el cliente ya había autorizado la app y pulsa "Continuar", Meta no envía los IDs: el backend los descubre con el token.
  * El backend cambia el code por el token del cliente; el navegador nunca ve ese token.
  */
 
 const GRAPH_VERSION = 'v25.0'
 const SDK_URL = 'https://connect.facebook.net/en_US/sdk.js'
-/** Tiempo para que llegue el mensaje con los IDs después del code (pueden llegar en cualquier orden). */
+/** Tiempo para que llegue el mensaje con los IDs después del code (pueden llegar en cualquier orden); si no llega, sigue sin ellos. */
 const IDS_TIMEOUT_MS = 10_000
 
 interface FacebookSdk {
@@ -23,8 +24,9 @@ declare global {
 
 export interface EmbeddedSignupResult {
   code: string
-  phoneNumberId: string
-  wabaId: string
+  /** null si Meta no los envió (el backend los descubre). */
+  phoneNumberId: string | null
+  wabaId: string | null
 }
 
 export const embeddedSignupConfig = () => {
@@ -68,7 +70,7 @@ const isFacebookOrigin = (origin: string) => {
 
 const FINISH_EVENTS = new Set(['FINISH', 'FINISH_ONLY_WABA', 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'])
 
-/** Abre el popup de Meta y espera el code y los IDs del número conectado. */
+/** Abre el popup de Meta y espera el code y, si llegan, los IDs del número conectado. */
 export async function launchEmbeddedSignup(): Promise<EmbeddedSignupResult> {
   const config = embeddedSignupConfig()
   if (!config) throw new Error('La conexión con Facebook no está configurada')
@@ -76,7 +78,7 @@ export async function launchEmbeddedSignup(): Promise<EmbeddedSignupResult> {
 
   return new Promise<EmbeddedSignupResult>((resolve, reject) => {
     let code: string | null = null
-    let ids: { phoneNumberId: string; wabaId: string } | null = null
+    let ids: { phoneNumberId: string | null; wabaId: string | null } | null = null
     let timer: ReturnType<typeof setTimeout> | undefined
 
     const finish = (error?: Error) => {
@@ -102,8 +104,7 @@ export async function launchEmbeddedSignup(): Promise<EmbeddedSignupResult> {
       if (payload.event && FINISH_EVENTS.has(payload.event)) {
         const phoneNumberId = payload.data?.phone_number_id
         const wabaId = payload.data?.waba_id
-        if (!phoneNumberId || !wabaId) return finish(new Error('Meta no indicó qué número conectaste. Vuelve a intentarlo.'))
-        ids = { phoneNumberId: String(phoneNumberId), wabaId: String(wabaId) }
+        ids = phoneNumberId && wabaId ? { phoneNumberId: String(phoneNumberId), wabaId: String(wabaId) } : { phoneNumberId: null, wabaId: null }
         tryFinish()
       } else if (payload.event === 'CANCEL') {
         finish(new Error('Cerraste la ventana de Facebook antes de terminar.'))
@@ -119,7 +120,10 @@ export async function launchEmbeddedSignup(): Promise<EmbeddedSignupResult> {
         if (!received) return finish(new Error('No se completó la conexión con Facebook.'))
         code = received
         if (ids) return tryFinish()
-        timer = setTimeout(() => finish(new Error('Meta no indicó qué número conectaste. Vuelve a intentarlo.')), IDS_TIMEOUT_MS)
+        timer = setTimeout(() => {
+          ids = { phoneNumberId: null, wabaId: null }
+          finish()
+        }, IDS_TIMEOUT_MS)
       },
       {
         config_id: config.configId,

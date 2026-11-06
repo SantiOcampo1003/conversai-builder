@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { WhatsAppLinesController } from './whatsapp-lines.controller';
 
 function setup(accessError?: Error, level: 'view' | 'manage' = 'manage') {
@@ -109,10 +109,41 @@ describe('WhatsAppLinesController.embeddedSignup', () => {
     expect(lines.connectWithEmbeddedSignup).toHaveBeenCalledWith('c1', 'Ventas', 'CODE', '1234567', '7654321');
   });
 
+  it('sin IDs del popup conecta igual (el backend descubre el número)', async () => {
+    const access = { assertClientAccess: jest.fn(async () => undefined) } as any;
+    const lines = { connectWithEmbeddedSignup: jest.fn(async () => ({ id: 'l1' })) } as any;
+    await new WhatsAppLinesController(lines, access).embeddedSignup('Bearer t', { clientId: 'c1', lineName: 'Ventas', code: 'CODE' });
+    expect(lines.connectWithEmbeddedSignup).toHaveBeenCalledWith('c1', 'Ventas', 'CODE', null, null);
+  });
+
+  it('con solo uno de los dos IDs responde 400', async () => {
+    const access = { assertClientAccess: jest.fn(async () => undefined) } as any;
+    const lines = { connectWithEmbeddedSignup: jest.fn() } as any;
+    await expect(
+      new WhatsAppLinesController(lines, access).embeddedSignup('Bearer t', { clientId: 'c1', lineName: 'Ventas', code: 'CODE', phoneNumberId: '1234567' }),
+    ).rejects.toThrow(new BadRequestException('Faltan datos del número de Meta'));
+    expect(lines.connectWithEmbeddedSignup).not.toHaveBeenCalled();
+  });
+
   it('sin permiso de gestión no conecta nada', async () => {
     const access = { assertClientAccess: jest.fn(async () => { throw new ForbiddenException('No tienes permiso sobre este cliente'); }) } as any;
     const lines = { connectWithEmbeddedSignup: jest.fn() } as any;
     await expect(new WhatsAppLinesController(lines, access).embeddedSignup('Bearer t', dto)).rejects.toThrow(ForbiddenException);
     expect(lines.connectWithEmbeddedSignup).not.toHaveBeenCalled();
+  });
+});
+
+describe('EmbeddedSignupDto', () => {
+  const { validate } = require('class-validator');
+  const { plainToInstance } = require('class-transformer');
+  const { EmbeddedSignupDto } = require('./whatsapp-lines.controller');
+  const base = { clientId: '11111111-1111-1111-1111-111111111111', lineName: 'Ventas', code: 'CODE' };
+
+  it('acepta el code sin IDs del número', async () => {
+    expect(await validate(plainToInstance(EmbeddedSignupDto, base))).toHaveLength(0);
+  });
+
+  it('valida el formato de los IDs cuando vienen', async () => {
+    expect(await validate(plainToInstance(EmbeddedSignupDto, { ...base, phoneNumberId: 'x', wabaId: '7654321' }))).toHaveLength(1);
   });
 });

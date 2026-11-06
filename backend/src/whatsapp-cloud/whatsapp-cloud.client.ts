@@ -69,13 +69,48 @@ export class WhatsAppCloudClient {
    * El code dura 30 s y sirve una sola vez.
    */
   async exchangeCode(code: string): Promise<string> {
-    const appId = this.config.get<string>('META_APP_ID');
-    const appSecret = this.config.get<string>('META_APP_SECRET');
-    if (!appId || !appSecret) throw new Error('Falta configurar META_APP_ID o META_APP_SECRET en el servidor');
+    const { appId, appSecret } = this.appCredentials();
     const query = new URLSearchParams({ client_id: appId, client_secret: appSecret, code });
     const data = await this.request('GET', `oauth/access_token?${query.toString()}`, undefined, null);
     if (!data?.access_token) throw new BadGatewayException('WhatsApp (Meta) no devolvió el token de la cuenta');
     return data.access_token;
+  }
+
+  /**
+   * Vencimiento del token del cliente y cuentas de WhatsApp Business que autorizó (respaldo cuando el popup no envía los IDs).
+   * `expires_at = 0` significa que no vence.
+   */
+  async debugToken(token: string): Promise<{ expiresAt: Date | null; wabaIds: string[] }> {
+    const { appId, appSecret } = this.appCredentials();
+    const query = new URLSearchParams({ input_token: token });
+    const { data } = (await this.request('GET', `debug_token?${query.toString()}`, undefined, `${appId}|${appSecret}`)) ?? {};
+    const expiresAt = Number(data?.expires_at) > 0 ? new Date(Number(data.expires_at) * 1000) : null;
+    const wabaIds = (data?.granular_scopes ?? [])
+      .filter((s: any) => s?.scope === 'whatsapp_business_management')
+      .flatMap((s: any) => (s.target_ids ?? []) as string[]);
+    return { expiresAt, wabaIds: [...new Set<string>(wabaIds)] };
+  }
+
+  /** Números de una cuenta de WhatsApp Business. */
+  async listPhoneNumbers(wabaId: string, token: AccessToken): Promise<{ id: string; displayPhoneNumber: string }[]> {
+    const data = await this.request('GET', `${encodeURIComponent(wabaId)}/phone_numbers?fields=id,display_phone_number`, undefined, token);
+    return (data?.data ?? []).map((n: any) => ({ id: String(n.id), displayPhoneNumber: n.display_phone_number }));
+  }
+
+  /** Renueva el token del cliente por otros 60 días (tokens de usuario del sistema de integración empresarial). */
+  async refreshToken(token: string): Promise<{ accessToken: string; expiresAt: Date | null }> {
+    const { appId, appSecret } = this.appCredentials();
+    const query = new URLSearchParams({
+      grant_type: 'fb_exchange_token',
+      client_id: appId,
+      client_secret: appSecret,
+      fb_exchange_token: token,
+      set_token_expires_in_60_days: 'true',
+    });
+    const data = await this.request('GET', `oauth/access_token?${query.toString()}`, undefined, null);
+    if (!data?.access_token) throw new BadGatewayException('WhatsApp (Meta) no devolvió el token renovado');
+    const seconds = Number(data.expires_in);
+    return { accessToken: data.access_token, expiresAt: seconds > 0 ? new Date(Date.now() + seconds * 1000) : null };
   }
 
   /** Registra el número en la Cloud API con un PIN de verificación en dos pasos (lo fija si el número no tenía). */
@@ -108,6 +143,13 @@ export class WhatsAppCloudClient {
     );
   }
 
+  private appCredentials(): { appId: string; appSecret: string } {
+    const appId = this.config.get<string>('META_APP_ID');
+    const appSecret = this.config.get<string>('META_APP_SECRET');
+    if (!appId || !appSecret) throw new Error('Falta configurar META_APP_ID o META_APP_SECRET en el servidor');
+    return { appId, appSecret };
+  }
+
   /** El token de la línea o, si no tiene, el de la plataforma. */
   private token(token: AccessToken): string {
     if (token) return token;
@@ -116,7 +158,7 @@ export class WhatsAppCloudClient {
     return platform;
   }
 
-  /** `token === null`: llamada sin token (intercambio del code de Embedded Signup). */
+  /** `token === null`: llamada sin token (intercambio o renovación del token con las credenciales de la app). */
   private async request(method: 'GET' | 'POST', path: string, body: Record<string, unknown> | undefined, token: AccessToken): Promise<any> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token !== null) headers.Authorization = `Bearer ${this.token(token)}`;

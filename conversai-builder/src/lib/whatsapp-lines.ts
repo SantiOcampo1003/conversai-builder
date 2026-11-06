@@ -14,6 +14,10 @@ export interface WhatsAppLine {
   evolution_instance_name: string | null
   meta_phone_number_id: string | null
   meta_waba_id: string | null
+  /** Vencimiento del acceso a Meta (null = no vence o usa el de la plataforma). */
+  meta_token_expires_at: string | null
+  /** Último fallo al renovar el acceso a Meta; hay que reconectar con Facebook. */
+  meta_token_refresh_error: string | null
   qr_code: string | null
   last_connected_at: string | null
   error_message: string | null
@@ -65,8 +69,17 @@ export const createMetaLine = async (clientId: string, lineName: string, phoneNu
 export const connectWithEmbeddedSignup = async (
   clientId: string,
   lineName: string,
-  signup: { code: string; phoneNumberId: string; wabaId: string },
-) => (await call<{ line: WhatsAppLine }>('POST', '/meta/embedded-signup', { clientId, lineName, ...signup })).line
+  signup: { code: string; phoneNumberId: string | null; wabaId: string | null },
+) =>
+  (
+    await call<{ line: WhatsAppLine }>('POST', '/meta/embedded-signup', {
+      clientId,
+      lineName,
+      code: signup.code,
+      // Sin IDs (Meta reusó una autorización anterior) el backend descubre el número
+      ...(signup.phoneNumberId && signup.wabaId && { phoneNumberId: signup.phoneNumberId, wabaId: signup.wabaId }),
+    })
+  ).line
 
 /** Estado actual; si la línea espera escaneo trae el QR vigente. */
 export const refreshLine = async (id: string) => (await call<{ line: WhatsAppLine }>('POST', `/${id}/refresh`)).line

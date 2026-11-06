@@ -358,3 +358,25 @@ CREATE POLICY "good_check"
 ---
 
 - v2
+
+---
+
+## ⏰ Tareas Programadas (Crons)
+
+### ⚙️ Regla: ¿Dónde va el cron?
+
+| La tarea… | Va en | Ejemplo |
+|---|---|---|
+| Solo lee/escribe la base de datos | **`pg_cron`** en una migración de Supabase | `cancel_expired_token_payments()` cada hora (`20260222000002_payment_retry_system.sql`) |
+| Llama a una API externa (Meta, Evolution, OpenAI…) o usa secretos del backend | **`@nestjs/schedule`** en el backend NestJS | Renovación diaria de tokens de clientes de Meta (`MetaTokenRenewalService`) |
+
+**Por qué:** los secretos (`WHATSAPP_TOKEN_ENCRYPTION_KEY`, API keys) viven solo en el backend y **nunca** se guardan en la base; y la lógica de integraciones (clientes HTTP, cifrado, logs) ya está en el backend. No usamos `pg_net` para que Supabase "despierte" al backend.
+
+### ✅ Checklist para un cron nuevo
+
+- **pg_cron:** función SQL `SECURITY DEFINER` con `SET search_path = public`; programarla en la migración con `cron.schedule('<nombre-unico>', '<expr>', $sql$SELECT ...$sql$)`; idempotente (re-ejecutarla no cambia nada si no hay trabajo).
+- **Backend:** método `@Cron('<expr>', { timeZone: 'America/Bogota' })` que solo delega en un método público testeable (p. ej. `renewDueTokens(now)`).
+- **Idempotente y seguro con réplicas:** actualizar con condición sobre el valor leído (`.eq('columna', valorAnterior)`) para que dos ejecuciones simultáneas no se pisen.
+- **Un fallo no detiene el lote:** capturar el error por ítem, registrarlo (sin tokens en logs) y seguir con los demás.
+- **Tolerante a corridas perdidas:** el backend puede estar redesplegando a la hora del cron; diseñar con margen (ej. renovar desde 15 días antes del vencimiento) en lugar de depender de una sola ejecución.
+- **Visibilidad:** si el fallo requiere acción del cliente, dejarlo marcado en la base y mostrarlo en el panel.
